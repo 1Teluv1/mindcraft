@@ -7,6 +7,7 @@ import { initBot } from '../utils/mcdata.js';
 import { containsCommand, commandExists, executeCommand, truncCommandMessage, isAction, blacklistCommands } from './commands/index.js';
 import { ActionManager } from './action_manager.js';
 import { NPCContoller } from './npc/controller.js';
+import { createHybridController } from './npc/hybrid_runtime.js';
 import { MemoryBank } from './memory_bank.js';
 import { SelfPrompter } from './self_prompter.js';
 import convoManager from './conversation.js';
@@ -44,6 +45,7 @@ export class Agent {
         this.npc = new NPCContoller(this);
         this.memory_bank = new MemoryBank();
         this.self_prompter = new SelfPrompter(this);
+        this.hybrid = createHybridController(this);
         convoManager.initAgent(this);
         await this.prompter.initExamples();
 
@@ -270,6 +272,8 @@ export class Agent {
         const from_other_bot = convoManager.isOtherAgent(source);
 
         if (!self_prompt && !from_other_bot) { // from user, check for forced commands
+            this.hybrid.pauseForInput();
+            this.last_sender = source;
             const user_command_name = containsCommand(message);
             if (user_command_name) {
                 if (!commandExists(user_command_name)) {
@@ -364,6 +368,7 @@ export class Agent {
                 console.log('Agent executed:', command_name, 'and got:', execute_res);
                 used_command = true;
 
+                if (command_name === '!obtainItem' && this.hybrid.ownsWork()) break;
                 if (execute_res)
                     this.history.add('system', execute_res);
                 else
@@ -520,6 +525,8 @@ export class Agent {
     async update(delta) {
         await this.bot.modes.update();
         this.self_prompter.update(delta);
+        // Do not block emergency modes while a goal step is running.
+        void this.hybrid.tick(this.self_prompter.isActive() && this.self_prompter.prompt === settings.life_goal && !settings.task);
         await this.checkTaskDone();
     }
 

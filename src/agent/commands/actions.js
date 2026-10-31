@@ -27,6 +27,20 @@ function runAsAction (actionFn, resume = false, timeout = -1) {
 
 export const actionsList = [
     {
+        name: '!obtainItem',
+        description: 'Obtain a TOTAL inventory quantity of an item using the local resource/crafting planner. Prefer this for requests to gather or craft items: prerequisites and retries run automatically without further commands. Completion is reported automatically.',
+        params: {
+            item: { type: 'ItemName', description: 'Minecraft item ID, such as stone_axe or oak_log.' },
+            quantity: { type: 'int', description: 'Desired total inventory quantity.', domain: [1, 256] },
+        },
+        perform: async (agent, item, quantity) => {
+            if (!agent.hybrid.enabled()) return 'Hybrid autonomy is disabled.';
+            await agent.actions.stop();
+            agent.hybrid.setGoal(item, quantity, agent.last_sender);
+            return 'Item goal registered. The local planner will execute prerequisites and report completion; do not issue another work command until then.';
+        },
+    },
+    {
         name: '!newAction',
         description: 'Perform new and unknown custom behaviors that are not available as a command.', 
         params: {
@@ -58,6 +72,7 @@ export const actionsList = [
             agent.clearBotLogs();
             agent.actions.cancelResume();
             agent.bot.emit('idle');
+            agent.self_prompter.stop(false);
             let msg = 'Agent stopped.';
             if (agent.self_prompter.isActive())
                 msg += ' Self-prompting still active.';

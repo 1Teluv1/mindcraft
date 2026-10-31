@@ -1,3 +1,5 @@
+import settings from './settings.js';
+
 const STOPPED = 0
 const ACTIVE = 1
 const PAUSED = 2
@@ -62,8 +64,26 @@ export class SelfPrompter {
         this.loop_active = true;
         let no_command_count = 0;
         const MAX_NO_COMMAND = 3;
-        while (!this.interrupt) {
+        while (!this.interrupt && this.state === ACTIVE) {
             const msg = `You are self-prompting with the goal: '${this.prompt}'. Your next response MUST contain a command with this syntax: !commandName. Respond:`;
+            if (this.agent.hybrid?.enabled() && !settings.task) {
+                const hybrid = this.agent.hybrid;
+                const routine = this.prompt === settings.life_goal;
+                if (hybrid.ownsWork() || !this.agent.isIdle() || this.agent.prompter.preempt_active) {
+                    await new Promise(r => setTimeout(r, 500));
+                    continue;
+                }
+                const event = hybrid.takeReplan();
+                if (event) {
+                    await this.agent.handleMessage('system', event, 1);
+                    continue;
+                }
+                if (routine) {
+                    // The local scheduler handles routine work; no periodic LLM polling.
+                    await new Promise(r => setTimeout(r, 500));
+                    continue;
+                }
+            }
             
             let used_command = await this.agent.handleMessage('system', msg, -1);
             if (!used_command) {

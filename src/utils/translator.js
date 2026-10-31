@@ -1,30 +1,9 @@
-import translate from 'google-translate-api-x';
-import settings from '../agent/settings.js';
-
-
-
+// Compatibility entry points: player input and model output are never translated.
+// Generate the desired language directly through the NPC profile prompts.
 export async function handleTranslation(message) {
-    let preferred_lang = String(settings.language);
-    if (!preferred_lang || preferred_lang.toLowerCase() === 'en' || preferred_lang.toLowerCase() === 'english')
-        return message;
-    try {
-        const translation = await translate(message, { to: preferred_lang });
-        return translation.text || message;
-    } catch (error) {
-        console.error('Error translating message:', error);
-        return message;
-    }
+    return message;
 }
 
 export async function handleEnglishTranslation(message) {
-    let preferred_lang = String(settings.language);
-    if (!preferred_lang || preferred_lang.toLowerCase() === 'en' || preferred_lang.toLowerCase() === 'english')
-        return message;
-    try {
-        const translation = await translate(message, { to: 'english' });
-        return translation.text || message;
-    } catch (error) {
-        console.error('Error translating message:', error);
-        return message;
-    }
+    return message;
 }

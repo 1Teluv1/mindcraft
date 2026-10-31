@@ -1,3 +1,4 @@
+import { trackAttackers, defenseTarget, canStartDefense } from './library/defense.js';
 import * as skills from './library/skills.js';
 import * as world from './library/world.js';
 import * as mc from '../utils/mcdata.js';
@@ -160,9 +161,9 @@ const modes_list = [
         on: true,
         active: false,
         update: async function (agent) {
-            const enemy = world.getNearestEntityWhere(agent.bot, entity => mc.isHostile(entity), 8);
-            if (enemy && await world.isClearPath(agent.bot, enemy)) {
-                say(agent, `Fighting ${enemy.name}!`);
+            const enemy = defenseTarget(agent.bot, mc.isHostile, 8);
+            if (await canStartDefense(agent.bot, enemy, mc.isHostile, world.isClearPath)) {
+                say(agent, '몬스터가 다가왔어. 싸울게!');
                 execute(this, agent, async () => {
                     await skills.defendSelf(agent.bot, 8);
                 });
@@ -436,6 +437,7 @@ export function initModes(agent) {
     _agent = agent;
     // the mode controller is added to the bot object so it is accessible from anywhere the bot is used
     agent.bot.modes = new ModeController();
+    trackAttackers(agent.bot, mc.isHostile);
     if (agent.task) {
         agent.bot.restrict_to_inventory = agent.task.restrict_to_inventory;
     }

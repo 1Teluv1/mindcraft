@@ -1,3 +1,4 @@
+import { defenseTarget } from './defense.js';
 import * as mc from "../../utils/mcdata.js";
 import * as world from "./world.js";
 import pf from 'mineflayer-pathfinder';
@@ -379,32 +380,24 @@ export async function defendSelf(bot, range=9) {
     bot.modes.pause('self_defense');
     bot.modes.pause('cowardice');
     let attacked = false;
-    let enemy = world.getNearestEntityWhere(bot, entity => mc.isHostile(entity), range);
-    while (enemy) {
-        await equipHighestAttack(bot);
-        if (bot.entity.position.distanceTo(enemy.position) >= 4 && enemy.name !== 'creeper' && enemy.name !== 'phantom') {
-            try {
-                bot.pathfinder.setMovements(new pf.Movements(bot));
-                await bot.pathfinder.goto(new pf.goals.GoalFollow(enemy, 3.5), true);
-            } catch (err) {/* might error if entity dies, ignore */}
+    try {
+        let enemy = defenseTarget(bot, mc.isHostile, range);
+        while (enemy && !bot.interrupt_code) {
+            await equipHighestAttack(bot);
+            // PVP already pursues the target. A separate awaited goto/back-off
+            // can stall before the first attack, especially under knockback.
+            await bot.pvp.attack(enemy);
+            attacked = true;
+            await new Promise(resolve => setTimeout(resolve, 500));
+            enemy = defenseTarget(bot, mc.isHostile, range);
         }
-        if (bot.entity.position.distanceTo(enemy.position) <= 2) {
-            try {
-                bot.pathfinder.setMovements(new pf.Movements(bot));
-                let inverted_goal = new pf.goals.GoalInvert(new pf.goals.GoalFollow(enemy, 2));
-                await bot.pathfinder.goto(inverted_goal, true);
-            } catch (err) {/* might error if entity dies, ignore */}
-        }
-        bot.pvp.attack(enemy);
-        attacked = true;
-        await new Promise(resolve => setTimeout(resolve, 500));
-        enemy = world.getNearestEntityWhere(bot, entity => mc.isHostile(entity), range);
-        if (bot.interrupt_code) {
-            bot.pvp.stop();
-            return false;
-        }
+        if (bot.interrupt_code) return false;
+    } finally {
+        await bot.pvp.stop();
+        bot.modes.unpause('self_defense');
+        bot.modes.unpause('cowardice');
     }
-    bot.pvp.stop();
+
     if (attacked)
         log(bot, `Successfully defended self.`);
     else

@@ -380,7 +380,7 @@ export const actionsList = [
     },
     {
         name: '!goToBed',
-        description: '가장 가까운 침대로 가 잔다.',
+        description: '주변 32블록에서 빈 침대를 찾아 잔다. 사용 중인 침대는 건너뛰고 다른 침대를 자동으로 시도한다. 다른 침대를 찾을 때도 이 명령을 사용한다. newAction은 필요 없다.',
         perform: runAsAction(async (agent) => {
             await skills.goToBed(agent.bot);
         })

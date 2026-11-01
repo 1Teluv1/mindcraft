@@ -1704,7 +1704,7 @@ export async function useDoor(bot, door_pos=null) {
 
 export async function goToBed(bot) {
     /**
-     * Sleep in the nearest bed.
+     * Sleep in the nearest available bed, trying other beds if one is occupied.
      * @param {MinecraftBot} bot, reference to the minecraft bot.
      * @returns {Promise<boolean>} true if the bed was found, false otherwise.
      * @example
@@ -1712,19 +1712,41 @@ export async function goToBed(bot) {
      **/
     const beds = bot.findBlocks({
         matching: (block) => {
-            return block.name.includes('bed');
+            const properties = block.getProperties();
+            return (block.name === 'bed' || block.name.endsWith('_bed'))
+                && properties.part !== 'foot' && properties.occupied !== true && properties.occupied !== 'true';
         },
         maxDistance: 32,
-        count: 1
+        count: 32
     });
     if (beds.length === 0) {
-        log(bot, `Could not find a bed to sleep in.`);
+        log(bot, `주변 32블록에 사용 가능한 빈 침대가 없어. 침대를 비우거나 추가해 줘.`);
         return false;
     }
-    let loc = beds[0];
-    await goToPosition(bot, loc.x, loc.y, loc.z);
-    const bed = bot.blockAt(loc);
-    await bot.sleep(bed);
+    beds.sort((a, b) => bot.entity.position.distanceTo(a) - bot.entity.position.distanceTo(b));
+    let sleeping = false;
+    for (const loc of beds) {
+        if (bot.interrupt_code) return false;
+        try {
+            if (await goToPosition(bot, loc.x, loc.y, loc.z, 1) === false) continue;
+            if (bot.interrupt_code) return false;
+            const bed = bot.blockAt(loc);
+            if (!bed || !(bed.name === 'bed' || bed.name.endsWith('_bed'))) continue;
+            const occupied = bed.getProperties().occupied;
+            if (occupied === true || occupied === 'true') continue;
+            await bot.sleep(bed);
+            sleeping = true;
+            break;
+        } catch (error) {
+            log(bot, `이 침대에서 잘 수 없어: ${error.message}`);
+            if (bot.interrupt_code) return false;
+            if (/not night|already sleeping|monsters nearby/.test(error.message)) return false;
+        }
+    }
+    if (!sleeping) {
+        log(bot, `주변 침대를 확인했지만 잘 수 없었어. 빈 침대와 접근 경로를 확인해 줘.`);
+        return false;
+    }
     log(bot, `You are in bed.`);
     bot.modes.pause('unstuck');
     while (bot.isSleeping) {

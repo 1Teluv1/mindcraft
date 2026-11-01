@@ -1273,15 +1273,49 @@ export async function goToNearestEntity(bot, entityType, min_distance=2, range=6
      * @param {number} range, the range to look for the entity. Defaults to 64.
      * @returns {Promise<boolean>} true if the entity was reached, false otherwise.
      **/
-    let entity = world.getNearestEntityWhere(bot, entity => entity.name === entityType, range);
+    const origin = bot.entity.position.clone();
+    const radius = Math.min(96, Math.max(0, Number(range) || 64));
+    const started = Date.now();
+    const interrupted = () => bot.interrupt_code || bot.health < 10 || bot.food < 6;
+    const find = () => world.getNearestEntityWhere(bot, entity => entity.name === entityType, range);
+    const travel = async (point, distance) => {
+        const watchdog = setInterval(() => {
+            if (interrupted() || Date.now() - started >= 90000) bot.pathfinder.stop();
+        }, 250);
+        try { return await goToPosition(bot, point.x, point.y, point.z, distance); }
+        finally { clearInterval(watchdog); }
+    };
+    let entity = find();
+    // Visit a bounded set of expanding waypoints so unloaded surroundings can become visible.
+    for (let i = 0; !entity && i < 8 && Date.now() - started < 90000; i++) {
+        if (interrupted()) break;
+        const distance = Math.min(radius, i < 4 ? 24 : 48);
+        if (distance < 8) break;
+        const angle = (i % 4) * Math.PI / 2 + (i >= 4 ? Math.PI / 4 : 0);
+        const target = origin.offset(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+        // Only select loaded, solid ground with two clear blocks above it.
+        let destination = null;
+        for (let dy = 4; dy >= -6; dy--) {
+            const feet = target.offset(0, dy, 0).floored();
+            const ground = bot.blockAt(feet.offset(0, -1, 0));
+            const lower = bot.blockAt(feet), upper = bot.blockAt(feet.offset(0, 1, 0));
+            if (ground?.boundingBox === 'block' && !/magma|cactus|campfire/.test(ground.name)
+                && lower?.name === 'air' && upper?.name === 'air') { destination = feet; break; }
+        }
+        if (!destination) continue;
+        log(bot, `Searching for ${entityType}: scouting up to ${distance} blocks from the starting point.`);
+        try { await travel(destination, 3); }
+        catch (error) { log(bot, `Scouting route unavailable: ${error.message}`); }
+        entity = find();
+    }
+    if (interrupted()) return false;
     if (!entity) {
-        log(bot, `Could not find any ${entityType} in ${range} blocks.`);
+        log(bot, `Could not find ${entityType}; returning to the search starting point.`);
+        await goToPosition(bot, origin.x, origin.y, origin.z, 3);
         return false;
     }
-    let distance = bot.entity.position.distanceTo(entity.position);
-    log(bot, `Found ${entityType} ${distance} blocks away.`);
-    await goToPosition(bot, entity.position.x, entity.position.y, entity.position.z, min_distance);
-    return true;
+    log(bot, `Found ${entityType}.`);
+    return await goToPosition(bot, entity.position.x, entity.position.y, entity.position.z, min_distance);
 }
 
 export async function goToPlayer(bot, username, distance=3) {
@@ -1418,6 +1452,141 @@ export async function moveAway(bot, distance) {
     let new_pos = bot.entity.position;
     log(bot, `Moved away from ${pos.floored()} to ${new_pos.floored()}.`);
     return true;
+}
+
+const HAZARD_BLOCKS = new Set(['water', 'lava', 'magma_block', 'powder_snow', 'cactus', 'fire', 'soul_fire', 'campfire', 'soul_campfire', 'sweet_berry_bush', 'wither_rose']);
+const PASSABLE_BLOCKS = new Set(['air', 'cave_air', 'short_grass', 'tall_grass', 'fern', 'large_fern', 'snow', 'dead_bush', 'vine']);
+
+function isHazard(name) {
+    return HAZARD_BLOCKS.has(name);
+}
+
+function isPassable(name) {
+    return PASSABLE_BLOCKS.has(name);
+}
+
+const NEVER_DIG = new Set(['bedrock', 'barrier', 'end_portal', 'end_portal_frame', 'reinforced_deepslate', 'nether_portal']);
+
+function digDuration(block, itemId) {
+    try {
+        return block.digTime(itemId, false, true, false);
+    } catch {
+        return 20000;
+    }
+}
+
+async function digBlockingBlock(bot, target) {
+    const origin = bot.entity.position;
+    const feet = origin.floored();
+    const toward = target ? target.minus(origin) : new Vec3(0, 1, 0);
+    const towardNorm = toward.norm() > 0.1 ? toward.clone().normalize() : new Vec3(0, 1, 0);
+    const offsets = [
+        [0, 2, 0],
+        [1, 1, 0], [-1, 1, 0], [0, 1, 1], [0, 1, -1],
+        [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1],
+        [1, 2, 0], [-1, 2, 0], [0, 2, 1], [0, 2, -1],
+    ];
+    let best = null;
+    let bestScore = -Infinity;
+    for (const [x, y, z] of offsets) {
+        const block = bot.blockAt(feet.offset(x, y, z));
+        if (!block || block.boundingBox !== 'block') continue;
+        if (NEVER_DIG.has(block.name) || isHazard(block.name)) continue;
+        if (origin.distanceTo(block.position.offset(0.5, 0.5, 0.5)) > 4.5) continue;
+        const itemId = bot.heldItem ? bot.heldItem.type : null;
+        const digMs = digDuration(block, itemId);
+        if (!Number.isFinite(digMs) || digMs > 10000) continue;
+        const toBlock = block.position.offset(0.5, 0.5, 0.5).minus(origin);
+        if (toBlock.norm() < 0.1) continue;
+        const score = toBlock.normalize().dot(towardNorm) + (y >= 2 ? 0.4 : 0) - digMs / 20000;
+        if (score > bestScore) {
+            bestScore = score;
+            best = block;
+        }
+    }
+    if (!best) return false;
+    bot.setControlState('forward', false);
+    bot.setControlState('sprint', false);
+    try {
+        await bot.tool.equipForBlock(best);
+    } catch {
+        // Soft blocks can be broken by hand.
+    }
+    const itemId = bot.heldItem ? bot.heldItem.type : null;
+    if (digDuration(best, itemId) > 10000) return false;
+    log(bot, `Breaking ${best.name} to get out of the water.`);
+    try {
+        await Promise.race([
+            bot.dig(best, true),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 12000)),
+        ]);
+    } catch {
+        try { bot.stopDigging(); } catch { /* already stopped */ }
+        return false;
+    }
+    return true;
+}
+
+export async function escapeToSafety(bot) {
+    /**
+     * Leave water, lava, powder snow, or other dangerous ground for the nearest safe block.
+     * Swims toward shore, and breaks a nearby block when a wall or ceiling stops the bot.
+     * @param {MinecraftBot} bot, reference to the minecraft bot.
+     * @returns {Promise<boolean>} true if the bot reached safe ground.
+     * @example
+     * await skills.escapeToSafety(bot);
+     **/
+    const shore = world.getNearestBlocksWhere(bot, block => {
+        if (!block || block.boundingBox !== 'block' || isHazard(block.name)) return false;
+        const above = bot.blockAt(block.position.offset(0, 1, 0));
+        const above2 = bot.blockAt(block.position.offset(0, 2, 0));
+        return above && above2 && isPassable(above.name) && isPassable(above2.name);
+    }, 32, 1)[0];
+
+    const target = shore ? shore.position.offset(0.5, 1, 0.5) : null;
+    const swim = () => {
+        bot.setControlState('forward', true);
+        bot.setControlState('jump', true);
+        bot.setControlState('sprint', true);
+    };
+    if (target) await bot.lookAt(target);
+    swim();
+
+    let anchor = bot.entity.position.clone();
+    let movedAt = Date.now();
+    const start = Date.now();
+    while (Date.now() - start < 20000) {
+        if (bot.interrupt_code) {
+            bot.clearControlStates();
+            return false;
+        }
+        const pos = bot.entity.position;
+        const feet = bot.blockAt(pos);
+        const head = bot.blockAt(pos.offset(0, 1, 0));
+        const below = bot.blockAt(pos.offset(0, -0.2, 0));
+        const names = [feet?.name, head?.name, below?.name];
+        const submerged = head?.name === 'water' || (typeof bot.oxygenLevel === 'number' && bot.oxygenLevel < 15);
+        const otherHazard = names.some(name => name && name !== 'water' && isHazard(name));
+        if (!submerged && !otherHazard) {
+            bot.clearControlStates();
+            log(bot, 'Reached safe ground.');
+            return true;
+        }
+        if (pos.distanceTo(anchor) > 0.75) {
+            anchor = pos.clone();
+            movedAt = Date.now();
+        } else if (Date.now() - movedAt > 1200) {
+            await digBlockingBlock(bot, target);
+            anchor = bot.entity.position.clone();
+            movedAt = Date.now();
+        }
+        if (target) await bot.lookAt(target);
+        swim();
+        await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    bot.clearControlStates();
+    log(bot, 'Could not get out in time.');
+    return false;
 }
 
 export async function moveAwayFromEntity(bot, entity, distance=16) {
@@ -1560,6 +1729,10 @@ export async function goToBed(bot) {
     bot.modes.pause('unstuck');
     while (bot.isSleeping) {
         await new Promise(resolve => setTimeout(resolve, 500));
+        if (bot.interrupt_code) {
+            if (bot.isSleeping) await bot.wake();
+            return false;
+        }
     }
     log(bot, `You have woken up.`);
     return true;
@@ -1639,6 +1812,89 @@ export async function tillAndSow(bot, x, y, z, seedType=null) {
         await bot.activateBlock(block);
         log(bot, `Planted ${seedType} at x:${x.toFixed(1)}, y:${y.toFixed(1)}, z:${z.toFixed(1)}.`);
     }
+    return true;
+}
+
+export async function farmNearby(bot, seedType = 'none', num = 1) {
+    /**
+     * Till nearby grass, dirt, or empty farmland and plant seeds.
+     * @param {MinecraftBot} bot, reference to the minecraft bot.
+     * @param {string} seedType, the seed or crop item to plant. "none" only tills.
+     * @param {number} num, how many plots to farm. Defaults to 1.
+     * @returns {Promise<boolean>} true if at least one plot was farmed.
+     * @example
+     * await skills.farmNearby(bot, "wheat_seeds", 8);
+     **/
+    if (num < 1) {
+        log(bot, `Invalid number of plots to farm: ${num}.`);
+        return false;
+    }
+
+    const aliases = {
+        wheat: 'wheat_seeds',
+        beetroot: 'beetroot_seeds',
+        pumpkin: 'pumpkin_seeds',
+        melon: 'melon_seeds',
+    };
+    if (!seedType || seedType === 'none' || seedType === 'air') {
+        seedType = null;
+    } else {
+        seedType = aliases[seedType] || seedType;
+        if (seedType.endsWith('seed') && !seedType.endsWith('seeds'))
+            seedType += 's';
+        if (mc.getItemId(seedType) == null) {
+            log(bot, `Unknown seed type: ${seedType}.`);
+            return false;
+        }
+        if (!bot.inventory.items().some(item => item.name === seedType)) {
+            log(bot, `No ${seedType} to plant.`);
+            return false;
+        }
+    }
+
+    const hasHoe = bot.inventory.items().some(item => item.name.includes('hoe'));
+    const tillable = new Set(['grass_block', 'dirt', 'farmland']);
+    const clearAbove = new Set(['air', 'short_grass', 'tall_grass', 'fern', 'large_fern', 'dead_bush', 'snow']);
+    const exclude = [];
+    const range = 32;
+    let planted = 0;
+
+    while (planted < num) {
+        if (bot.interrupt_code) return false;
+        const block = world.getNearestBlocksWhere(bot, candidate => {
+            if (!candidate || !tillable.has(candidate.name)) return false;
+            if (!hasHoe && candidate.name !== 'farmland') return false;
+            if (exclude.some(pos => pos.x === candidate.position.x && pos.y === candidate.position.y && pos.z === candidate.position.z))
+                return false;
+            const above = bot.blockAt(candidate.position.offset(0, 1, 0));
+            return above && clearAbove.has(above.name);
+        }, range, 1)[0];
+
+        if (!block) {
+            if (!hasHoe && planted === 0)
+                log(bot, `Cannot farm, no hoe.`);
+            else
+                log(bot, `No open dirt or grass within ${range} blocks. Farmed ${planted}.`);
+            return planted > 0;
+        }
+
+        const ok = await tillAndSow(bot, block.position.x, block.position.y, block.position.z, seedType);
+        exclude.push(block.position);
+        if (!ok) {
+            if (seedType && !bot.inventory.items().some(item => item.name === seedType)) {
+                log(bot, `Out of ${seedType}. Farmed ${planted}.`);
+                return planted > 0;
+            }
+            if (exclude.length > num + 8) {
+                log(bot, `Stopped after failed plots. Farmed ${planted}.`);
+                return planted > 0;
+            }
+            continue;
+        }
+        planted++;
+    }
+
+    log(bot, `Farmed ${planted} plots${seedType ? ` with ${seedType}` : ''}.`);
     return true;
 }
 

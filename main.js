@@ -1,4 +1,5 @@
 import * as Mindcraft from './src/mindcraft/mindcraft.js';
+import { loadSavedAgentSettings } from './src/mindcraft/mindserver.js';
 import settings from './settings.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -75,6 +76,10 @@ Mindcraft.init(false, settings.mindserver_port, settings.auto_open_ui);
 
 for (let profile of settings.profiles) {
     const profile_json = JSON.parse(readFileSync(profile, 'utf8'));
-    settings.profile = profile_json;
-    Mindcraft.createAgent(settings);
+    const agentSettings = JSON.parse(JSON.stringify(settings));
+    const saved = loadSavedAgentSettings(profile_json.name);
+    if (saved) Object.assign(agentSettings, saved);
+    agentSettings.profile = profile_json;
+    console.log(`Player: ${profile_json.name} (${profile_json.model})`);
+    Mindcraft.createAgent(agentSettings);
 }

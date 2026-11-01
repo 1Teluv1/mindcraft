@@ -1,6 +1,7 @@
 import settings from './settings.js';
 import { containsCommand } from './commands/index.js';
 import { sendBotChatToServer } from './mindserver_proxy.js';
+import { note } from './shared_context.js';
 
 let agent;
 let agent_names = [];
@@ -78,7 +79,7 @@ class ConversationManager {
             if (this.awaiting_response && agent.isIdle()) {
                 wait_time += delta;
                 if (wait_time > this.wait_time_limit) {
-                    agent.handleMessage('system', `${convo_partner} hasn't responded in ${this.wait_time_limit/1000} seconds, respond with a message to them or your own action.`);
+                    agent.handleMessage('system', `${convo_partner}가 ${this.wait_time_limit/1000}초 동안 답이 없다. 그 친구에게 말을 걸거나 네 다음 행동을 해라. 답은 한국어다.`);
                     wait_time = 0;
                     this.wait_time_limit*=2;
                 }
@@ -96,7 +97,7 @@ class ConversationManager {
                     }
                     if (!agent.self_prompter.isPaused()) {
                         this.endConversation(convo_partner);
-                        agent.handleMessage('system', `${convo_partner} disconnected, conversation has ended.`);
+                        agent.handleMessage('system', `${convo_partner}의 접속이 끊겨 대화가 끝났다.`);
                     }
                     else {
                         this.endConversation(convo_partner);
@@ -147,8 +148,24 @@ class ConversationManager {
         }
         const convo = this._getConvo(send_to);
         
-        if (settings.chat_bot_messages && open_chat)
-            agent.openChat(`(To ${send_to}) ${message}`);
+        if (settings.chat_bot_messages && open_chat) {
+            let visible = message;
+            const command_name = containsCommand(message);
+            if (command_name && settings.show_command_syntax !== "full") {
+                const spoken = message.substring(0, message.indexOf(command_name)).trim();
+                const tag = `*used ${command_name.substring(1)}*`;
+                if (settings.show_command_syntax === "shortened")
+                    visible = spoken ? `${spoken} ${tag}` : tag;
+                else
+                    visible = spoken;
+            }
+            if (visible)
+                agent.openChat(`(To ${send_to}) ${visible}`);
+            else
+                note(agent.name, message);
+        } else {
+            note(agent.name, message);
+        }
         
         if (convo.ignore_until_start)
             return;

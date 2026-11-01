@@ -13,24 +13,22 @@ const pad = (str) => {
 export const queryList = [
     {
         name: "!stats",
-        description: "Get your bot's location, health, hunger, and time of day.", 
+        description: "위치, 체력, 배고픔, 시간을 확인한다.", 
         perform: function (agent) {
             let bot = agent.bot;
-            let res = 'STATS';
+            let res = '상태';
             let pos = bot.entity.position;
-            // display position to 2 decimal places
-            res += `\n- Position: x: ${pos.x.toFixed(2)}, y: ${pos.y.toFixed(2)}, z: ${pos.z.toFixed(2)}`;
-            // Gameplay
-            res += `\n- Gamemode: ${bot.game.gameMode}`;
-            res += `\n- Health: ${Math.round(bot.health)} / 20`;
-            res += `\n- Hunger: ${Math.round(bot.food)} / 20`;
-            res += `\n- Biome: ${world.getBiomeName(bot)}`;
-            let weather = "Clear";
+            res += `\n- 위치: x: ${pos.x.toFixed(2)}, y: ${pos.y.toFixed(2)}, z: ${pos.z.toFixed(2)}`;
+            res += `\n- 게임 모드: ${bot.game.gameMode}`;
+            res += `\n- 체력: ${Math.round(bot.health)} / 20`;
+            res += `\n- 배고픔: ${Math.round(bot.food)} / 20`;
+            res += `\n- 생물군계: ${world.getBiomeName(bot)}`;
+            let weather = "맑음";
             if (bot.rainState > 0)
-                weather = "Rain";
+                weather = "비";
             if (bot.thunderState > 0)
-                weather = "Thunderstorm";
-            res += `\n- Weather: ${weather}`;
+                weather = "뇌우";
+            res += `\n- 날씨: ${weather}`;
             // let block = bot.blockAt(pos);
             // res += `\n- Artficial light: ${block.skyLight}`;
             // res += `\n- Sky light: ${block.light}`;
@@ -38,26 +36,25 @@ export const queryList = [
 
 
             if (bot.time.timeOfDay < 6000) {
-                res += '\n- Time: Morning';
+                res += '\n- 시간: 아침';
             } else if (bot.time.timeOfDay < 12000) {
-                res += '\n- Time: Afternoon';
+                res += '\n- 시간: 오후';
             } else {
-                res += '\n- Time: Night';
+                res += '\n- 시간: 밤';
             }
 
-            // get the bot's current action
             let action = agent.actions.currentActionLabel;
             if (agent.isIdle())
-                action = 'Idle';
-            res += `\- Current Action: ${action}`;
+                action = '대기';
+            res += `\n- 현재 행동: ${action}`;
 
 
             let players = world.getNearbyPlayerNames(bot);
             let bots = convoManager.getInGameAgents().filter(b => b !== agent.name);
             players = players.filter(p => !bots.includes(p));
 
-            res += '\n- Nearby Human Players: ' + (players.length > 0 ? players.join(', ') : 'None.');
-            res += '\n- Nearby Bot Players: ' + (bots.length > 0 ? bots.join(', ') : 'None.');
+            res += '\n- 근처 사람: ' + (players.length > 0 ? players.join(', ') : '없음.');
+            res += '\n- 근처 봇: ' + (bots.length > 0 ? bots.join(', ') : '없음.');
 
             res += '\n' + agent.bot.modes.getMiniDocs() + '\n';
             return pad(res);
@@ -65,54 +62,54 @@ export const queryList = [
     },
     {
         name: "!inventory",
-        description: "Get your bot's inventory.",
+        description: "소지품을 확인한다.",
         perform: function (agent) {
             let bot = agent.bot;
             let inventory = world.getInventoryCounts(bot);
-            let res = 'INVENTORY';
+            let res = '소지품';
             for (const item in inventory) {
                 if (inventory[item] && inventory[item] > 0)
                     res += `\n- ${item}: ${inventory[item]}`;
             }
-            if (res === 'INVENTORY') {
-                res += ': Nothing';
+            if (res === '소지품') {
+                res += ': 없음';
             }
             else if (agent.bot.game.gameMode === 'creative') {
-                res += '\n(You have infinite items in creative mode. You do not need to gather resources!!)';
+                res += '\n(크리에이티브라 아이템이 무한하다. 재료를 모을 필요가 없다.)';
             }
 
             let helmet = bot.inventory.slots[5];
             let chestplate = bot.inventory.slots[6];
             let leggings = bot.inventory.slots[7];
             let boots = bot.inventory.slots[8];
-            res += '\nWEARING: ';
+            res += '\n착용: ';
             if (helmet)
-                res += `\nHead: ${helmet.name}`;
+                res += `\n머리: ${helmet.name}`;
             if (chestplate)
-                res += `\nTorso: ${chestplate.name}`;
+                res += `\n가슴: ${chestplate.name}`;
             if (leggings)
-                res += `\nLegs: ${leggings.name}`;
+                res += `\n다리: ${leggings.name}`;
             if (boots)
-                res += `\nFeet: ${boots.name}`;
+                res += `\n발: ${boots.name}`;
             if (!helmet && !chestplate && !leggings && !boots)
-                res += 'Nothing';
+                res += '없음';
 
             return pad(res);
         }
     },
     {
         name: "!nearbyBlocks",
-        description: "Get the blocks near the bot.",
+        description: "근처 블록을 확인한다.",
         perform: function (agent) {
             let bot = agent.bot;
-            let res = 'NEARBY_BLOCKS';
+            let res = '근처 블록';
             let blocks = world.getNearestBlocks(bot);
             let block_details = new Set();
             
             for (let block of blocks) {
                 let details = block.name;
                 if (block.name === 'water' || block.name === 'lava') {
-                    details += block.metadata === 0 ? ' (source)' : ' (flowing)';
+                    details += block.metadata === 0 ? ' (수원)' : ' (흐름)';
                 }
                 block_details.add(details);
             }
@@ -120,45 +117,45 @@ export const queryList = [
                 res += `\n- ${details}`;
             }
             if (block_details.size === 0) {
-                res += ': none';
+                res += ': 없음';
             } 
             else {
                 res += '\n- ' + world.getSurroundingBlocks(bot).join('\n- ');
-                res += `\n- First Solid Block Above Head: ${world.getFirstBlockAboveHead(bot, null, 32)}`;
+                res += `\n- 머리 위 첫 단단한 블록: ${world.getFirstBlockAboveHead(bot, null, 32)}`;
             }
             return pad(res);
         }
     },
     {
         name: "!craftable",
-        description: "Get the craftable items with the bot's inventory.",
+        description: "지금 소지품으로 만들 수 있는 아이템을 확인한다.",
         perform: function (agent) {
             let craftable = world.getCraftableItems(agent.bot);
-            let res = 'CRAFTABLE_ITEMS';
+            let res = '만들 수 있는 것';
             for (const item of craftable) {
                 res += `\n- ${item}`;
             }
-            if (res == 'CRAFTABLE_ITEMS') {
-                res += ': none';
+            if (res == '만들 수 있는 것') {
+                res += ': 없음';
             }
             return pad(res);
         }
     },
     {
         name: "!entities",
-        description: "Get the nearby players and entities.",
+        description: "근처 플레이어와 생물을 확인한다.",
         perform: function (agent) {
             let bot = agent.bot;
-            let res = 'NEARBY_ENTITIES';
+            let res = '근처 생물';
             let players = world.getNearbyPlayerNames(bot);
             let bots = convoManager.getInGameAgents().filter(b => b !== agent.name);
             players = players.filter(p => !bots.includes(p));
 
             for (const player of players) {
-                res += `\n- Human player: ${player}`;
+                res += `\n- 사람: ${player}`;
             }
             for (const bot of bots) {
-                res += `\n- Bot player: ${bot}`;
+                res += `\n- 봇: ${bot}`;
             }
 
             let nearbyEntities = world.getNearbyEntities(bot);
@@ -195,42 +192,42 @@ export const queryList = [
                     let villagerInfo = `${count} ${entityType}(s)`;
                     if (villagerDetails.length > 0) {
                         const detailStrings = villagerDetails.map(v => `(${v.id}:${v.profession})`);
-                        villagerInfo += ` - Adults: ${detailStrings.join(', ')}`;
+                        villagerInfo += ` - 어른: ${detailStrings.join(', ')}`;
                     }
                     if (babyVillagerIds.length > 0) {
-                        villagerInfo += ` - Baby IDs: ${babyVillagerIds.join(', ')} (babies cannot trade)`;
+                        villagerInfo += ` - 아기 id: ${babyVillagerIds.join(', ')} (아기는 거래할 수 없다)`;
                     }
-                    res += `\n- entities: ${villagerInfo}`;
+                    res += `\n- 생물: ${villagerInfo}`;
                 } else {
-                    res += `\n- entities: ${count} ${entityType}(s)`;
+                    res += `\n- 생물: ${entityType} ${count}`;
                 }
             }
             
-            if (res == 'NEARBY_ENTITIES') {
-                res += ': none';
+            if (res == '근처 생물') {
+                res += ': 없음';
             }
             return pad(res);
         }
     },
     {
         name: "!modes",
-        description: "Get all available modes and their docs and see which are on/off.",
+        description: "자동 행동 목록과 켜짐 상태를 확인한다.",
         perform: function (agent) {
             return agent.bot.modes.getDocs();
         }
     },
     {
         name: '!savedPlaces',
-        description: 'List all saved locations.',
+        description: '기억한 위치 이름을 모두 보여 준다.',
         perform: async function (agent) {
-            return "Saved place names: " + agent.memory_bank.getKeys();
+            return "기억한 위치: " + agent.memory_bank.getKeys();
         }
     }, 
     {
         name: '!checkBlueprintLevel',
-        description: 'Check if the level is complete and what blocks still need to be placed for the blueprint',
+        description: '그 층이 끝났는지, 청사진에 아직 놓을 블록이 무엇인지 확인한다.',
         params: {
-            'levelNum': { type: 'int', description: 'The level number to check.', domain: [0, Number.MAX_SAFE_INTEGER] }
+            'levelNum': { type: 'int', description: '확인할 층 번호.', domain: [0, Number.MAX_SAFE_INTEGER] }
         },
         perform: function (agent, levelNum) {
             let res = checkLevelBlueprint(agent, levelNum);
@@ -240,7 +237,7 @@ export const queryList = [
     }, 
     {
         name: '!checkBlueprint',
-        description: 'Check what blocks still need to be placed for the blueprint',
+        description: '청사진에 아직 놓을 블록을 확인한다.',
         perform: function (agent) {
             let res = checkBlueprint(agent);
             return pad(res);
@@ -248,7 +245,7 @@ export const queryList = [
     }, 
     {
         name: '!getBlueprint',
-        description: 'Get the blueprint for the building',
+        description: '건물의 청사진을 가져온다.',
         perform: function (agent) {
             let res = agent.task.blueprint.explain();
             return pad(res);
@@ -256,9 +253,9 @@ export const queryList = [
     }, 
     {
         name: '!getBlueprintLevel',
-        description: 'Get the blueprint for the building',
+        description: '건물의 청사진을 가져온다.',
         params: {
-            'levelNum': { type: 'int', description: 'The level number to check.', domain: [0, Number.MAX_SAFE_INTEGER] }
+            'levelNum': { type: 'int', description: '확인할 층 번호.', domain: [0, Number.MAX_SAFE_INTEGER] }
         },
         perform: function (agent, levelNum) {
             let res = agent.task.blueprint.explainLevel(levelNum);
@@ -268,15 +265,15 @@ export const queryList = [
     },
     {
         name: '!getCraftingPlan',
-        description: "Provides a comprehensive crafting plan for a specified item. This includes a breakdown of required ingredients, the exact quantities needed, and an analysis of missing ingredients or extra items needed based on the bot's current inventory.",
+        description: "지정한 아이템의 제작 계획을 보여 준다. 필요한 재료와 수량, 소지품에 없는 것을 알려 준다.",
         params: {
             targetItem: { 
                 type: 'string', 
-                description: 'The item that we are trying to craft' 
+                description: '만들 아이템' 
             },
             quantity: { 
                 type: 'int',
-                description: 'The quantity of the item that we are trying to craft',
+                description: '만들 수량',
                 optional: true,
                 domain: [1, Infinity, '[)'], // Quantity must be at least 1,
                 default: 1
@@ -292,7 +289,7 @@ export const queryList = [
             let prefixMessage = '';
             if (existingCount > 0) {
                 curr_inventory[target_item] -= existingCount;
-                prefixMessage = `You already have ${existingCount} ${target_item} in your inventory. If you need to craft more,\n`;
+                prefixMessage = `소지품에 ${target_item}이 이미 ${existingCount}개 있다. 더 만들려면,\n`;
             }
 
             // Generate crafting plan
@@ -310,9 +307,9 @@ export const queryList = [
     },
     {
         name: '!searchWiki',
-        description: 'Search the Minecraft Wiki for the given query.',
+        description: '마인크래프트 위키에서 검색한다.',
         params: {
-            'query': { type: 'string', description: 'The query to search for.' }
+            'query': { type: 'string', description: '검색할 말.' }
         },
         perform: async function (agent, query) {
             const url = `https://minecraft.wiki/w/${query}`
@@ -339,7 +336,7 @@ export const queryList = [
     },
     {
         name: '!help',
-        description: 'Lists all available commands and their descriptions.',
+        description: '쓸 수 있는 명령과 설명을 모두 보여 준다.',
         perform: async function (agent) {
             return getCommandDocs(agent);
         }

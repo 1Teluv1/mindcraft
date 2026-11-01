@@ -8,7 +8,7 @@ import convoManager from './conversation.js';
 async function say(agent, message) {
     agent.bot.modes.behavior_log += message + '\n';
     if (agent.shut_up || !settings.narrate_behavior) return;
-    agent.openChat(message);
+    agent.openChat(message, false);
 }
 
 // a mode is a function that is called every tick to respond immediately to the world
@@ -25,22 +25,38 @@ async function say(agent, message) {
 const modes_list = [
     {
         name: 'self_preservation',
-        description: 'Respond to drowning, burning, and damage at low health. Interrupts all actions.',
+        description: '물에 빠지거나 불에 타거나 체력이 낮으면 반응한다. 모든 행동을 끊는다.',
         interrupts: ['all'],
         on: true,
         active: false,
+        water_since: 0,
         fall_blocks: ['sand', 'gravel', 'concrete_powder'], // includes matching substrings like 'sandstone' and 'red_sand'
         update: async function (agent) {
             const bot = agent.bot;
             let block = bot.blockAt(bot.entity.position);
             let blockAbove = bot.blockAt(bot.entity.position.offset(0, 1, 0));
+            let blockBelow = bot.blockAt(bot.entity.position.offset(0, -1, 0));
             if (!block) block = {name: 'air'}; // hacky fix when blocks are not loaded
             if (!blockAbove) blockAbove = {name: 'air'};
-            if (blockAbove.name === 'water') {
-                // does not call execute so does not interrupt other actions
-                if (!bot.pathfinder.goal) {
+            if (!blockBelow) blockBelow = {name: 'air'};
+            const inWater = block.name === 'water' || blockAbove.name === 'water';
+            const inPowder = block.name === 'powder_snow' || blockAbove.name === 'powder_snow';
+            const badGround = blockBelow.name === 'magma_block' || blockBelow.name === 'cactus' || block.name === 'cactus' || block.name === 'sweet_berry_bush' || block.name === 'wither_rose';
+            if (inWater) {
+                const lowAir = typeof bot.oxygenLevel === 'number' && bot.oxygenLevel < 15;
+                const submerged = blockAbove.name === 'water';
+                if (submerged || lowAir) {
                     bot.setControlState('jump', true);
+                    execute(this, agent, async () => {
+                        await skills.escapeToSafety(bot);
+                    });
                 }
+            }
+            else if (inPowder || badGround) {
+                say(agent, inPowder ? '가루눈에 빠졌어!' : '바닥이 위험해!');
+                execute(this, agent, async () => {
+                    await skills.escapeToSafety(bot);
+                });
             }
             else if (this.fall_blocks.some(name => blockAbove.name.includes(name))) {
                 execute(this, agent, async () => {
@@ -49,36 +65,41 @@ const modes_list = [
             }
             else if (block.name === 'lava' || block.name === 'fire' ||
                 blockAbove.name === 'lava' || blockAbove.name === 'fire') {
-                say(agent, 'I\'m on fire!');
+                say(agent, '불이야!');
                 // if you have a water bucket, use it
                 let waterBucket = bot.inventory.findInventoryItem('water_bucket');
                 if (waterBucket) {
                     execute(this, agent, async () => {
                         let success = await skills.placeBlock(bot, 'water_bucket', block.position.x, block.position.y, block.position.z);
-                        if (success) say(agent, 'Placed some water, ahhhh that\'s better!');
+                        if (success) say(agent, '물을 뿌렸어. 살겠다!');
                     });
                 }
                 else {
                     execute(this, agent, async () => {
+                        const inLava = block.name === 'lava' || blockAbove.name === 'lava';
+                        if (inLava) {
+                            await skills.escapeToSafety(bot);
+                            return;
+                        }
                         let waterBucket = bot.inventory.findInventoryItem('water_bucket');
                         if (waterBucket) {
                             let success = await skills.placeBlock(bot, 'water_bucket', block.position.x, block.position.y, block.position.z);
-                            if (success) say(agent, 'Placed some water, ahhhh that\'s better!');
+                            if (success) say(agent, '물을 뿌렸어. 살겠다!');
                             return;
                         }
                         let nearestWater = world.getNearestBlock(bot, 'water', 20);
                         if (nearestWater) {
                             const pos = nearestWater.position;
                             let success = await skills.goToPosition(bot, pos.x, pos.y, pos.z, 0.2);
-                            if (success) say(agent, 'Found some water, ahhhh that\'s better!');
+                            if (success) say(agent, '물을 찾았어. 살겠다!');
                             return;
                         }
-                        await skills.moveAway(bot, 5);
+                        await skills.escapeToSafety(bot);
                     });
                 }
             }
             else if (Date.now() - bot.lastDamageTime < 3000 && (bot.health < 5 || bot.lastDamageTaken >= bot.health)) {
-                say(agent, 'I\'m dying!');
+                say(agent, '죽겠어!');
                 execute(this, agent, async () => {
                     await skills.moveAway(bot, 20);
                 });
@@ -90,7 +111,7 @@ const modes_list = [
     },
     {
         name: 'unstuck',
-        description: 'Attempt to get unstuck when in the same place for a while. Interrupts some actions.',
+        description: '한자리에 오래 있으면 빠져나오려고 한다. 일부 행동을 끊는다.',
         interrupts: ['all'],
         on: true,
         active: false,
@@ -121,13 +142,13 @@ const modes_list = [
             }
             const max_stuck_time = cur_dig_block?.name === 'obsidian' ? this.max_stuck_time * 2 : this.max_stuck_time;
             if (this.stuck_time > max_stuck_time) {
-                say(agent, 'I\'m stuck!');
+                say(agent, '막혔어!');
                 this.stuck_time = 0;
                 execute(this, agent, async () => {
                     const crashTimeout = setTimeout(() => { agent.cleanKill("Got stuck and couldn't get unstuck") }, 10000);
                     await skills.moveAway(bot, 5);
                     clearTimeout(crashTimeout);
-                    say(agent, 'I\'m free.');
+                    say(agent, '빠져나왔어.');
                 });
             }
             this.last_time = Date.now();
@@ -140,14 +161,15 @@ const modes_list = [
     },
     {
         name: 'cowardice',
-        description: 'Run away from enemies. Interrupts all actions.',
+        description: '적에게서 도망친다. 모든 행동을 끊는다.',
         interrupts: ['all'],
         on: true,
         active: false,
         update: async function (agent) {
+            if (agent.deferCombat) return;
             const enemy = world.getNearestEntityWhere(agent.bot, entity => mc.isHostile(entity), 16);
             if (enemy && await world.isClearPath(agent.bot, enemy)) {
-                say(agent, `Aaa! A ${enemy.name.replace("_", " ")}!`);
+                say(agent, `으악! ${enemy.name.replace("_", " ")}다!`);
                 execute(this, agent, async () => {
                     await skills.avoidEnemies(agent.bot, 24);
                 });
@@ -156,31 +178,42 @@ const modes_list = [
     },
     {
         name: 'self_defense',
-        description: 'Attack nearby enemies. Interrupts all actions.',
+        description: '근처 적을 공격한다. 모든 행동을 끊는다.',
         interrupts: ['all'],
         on: true,
         active: false,
+        announced: false,
+        last_fight: 0,
         update: async function (agent) {
+            if (agent.deferCombat) return;
             const enemy = defenseTarget(agent.bot, mc.isHostile, 8);
             if (await canStartDefense(agent.bot, enemy, mc.isHostile, world.isClearPath)) {
-                say(agent, '몬스터가 다가왔어. 싸울게!');
+                this.last_fight = Date.now();
+                if (!this.announced) {
+                    say(agent, '몬스터가 다가왔어. 싸울게!');
+                    this.announced = true;
+                }
                 execute(this, agent, async () => {
                     await skills.defendSelf(agent.bot, 8);
                 });
+            }
+            else if (this.announced && Date.now() - this.last_fight > 20000) {
+                this.announced = false;
             }
         }
     },
     {
         name: 'hunting',
-        description: 'Hunt nearby animals when idle.',
+        description: '한가할 때 근처 동물을 사냥한다.',
         interrupts: ['action:followPlayer'],
         on: true,
         active: false,
         update: async function (agent) {
+            if (agent.deferCombat) return;
             const huntable = world.getNearestEntityWhere(agent.bot, entity => mc.isHuntable(entity), 8);
             if (huntable && await world.isClearPath(agent.bot, huntable)) {
                 execute(this, agent, async () => {
-                    say(agent, `Hunting ${huntable.name}!`);
+                    say(agent, `${huntable.name} 사냥할게!`);
                     await skills.attackEntity(agent.bot, huntable);
                 });
             }
@@ -188,7 +221,7 @@ const modes_list = [
     },
     {
         name: 'item_collecting',
-        description: 'Collect nearby items when idle.',
+        description: '한가할 때 근처 아이템을 줍는다.',
         interrupts: ['action:followPlayer'],
         on: true,
         active: false,
@@ -204,7 +237,7 @@ const modes_list = [
                     this.noticed_at = Date.now();
                 }
                 if (Date.now() - this.noticed_at > this.wait * 1000) {
-                    say(agent, `Picking up item!`);
+                    say(agent, '아이템 주울게!');
                     this.prev_item = item;
                     execute(this, agent, async () => {
                         await skills.pickupNearbyItems(agent.bot);
@@ -219,7 +252,7 @@ const modes_list = [
     },
     {
         name: 'torch_placing',
-        description: 'Place torches when idle and there are no torches nearby.',
+        description: '한가하고 근처에 횃불이 없으면 횃불을 놓는다.',
         interrupts: ['action:followPlayer'],
         on: true,
         active: false,
@@ -238,7 +271,7 @@ const modes_list = [
     },
     {
         name: 'elbow_room',
-        description: 'Move away from nearby players when idle.',
+        description: '한가할 때 근처 플레이어에게서 조금 떨어진다.',
         interrupts: ['action:followPlayer'],
         on: true,
         active: false,
@@ -259,7 +292,7 @@ const modes_list = [
     },
     {
         name: 'idle_staring',
-        description: 'Animation to look around at entities when idle.',
+        description: '한가할 때 주변 생물을 둘러본다.',
         interrupts: [],
         on: true,
         active: false,
@@ -296,7 +329,7 @@ const modes_list = [
     },
     {
         name: 'cheat',
-        description: 'Use cheats to instantly place blocks and teleport.',
+        description: '치트로 블록을 바로 놓고 순간이동한다.',
         interrupts: [],
         on: false,
         active: false,
@@ -380,18 +413,18 @@ class ModeController {
     }
 
     getMiniDocs() { // no descriptions
-        let res = 'Agent Modes:';
+        let res = '자동 행동:';
         for (let mode of modes_list) {
-            let on = mode.on ? 'ON' : 'OFF';
+            let on = mode.on ? '켜짐' : '꺼짐';
             res += `\n- ${mode.name}(${on})`;
         }
         return res;
     }
 
     getDocs() {
-        let res = 'Agent Modes:';
+        let res = '자동 행동:';
         for (let mode of modes_list) {
-            let on = mode.on ? 'ON' : 'OFF';
+            let on = mode.on ? '켜짐' : '꺼짐';
             res += `\n- ${mode.name}(${on}): ${mode.description}`;
         }
         return res;

@@ -34,3 +34,29 @@ test('blocked event asks for one replan instead of a periodic next command', asy
     await loop.startLoop();
     assert.deepEqual(messages, [['system', 'Item goal blocked', 1]]);
 });
+
+
+test('idle routine chooses a new action after the decision interval', async () => {
+    let calls = 0;
+    const agent = { isIdle: () => true, prompter: {}, hybrid: {
+        enabled: () => true, ownsWork: () => false, takeReplan: () => null,
+    }, handleMessage: async () => { calls++; loop.interrupt = true; return true; } };
+    const loop = new SelfPrompter(agent);
+    loop.state = 1; loop.prompt = 'routine'; loop.nextRoutineDecision = 0;
+    await loop.startLoop();
+    assert.equal(calls, 1);
+    assert.ok(loop.nextRoutineDecision > Date.now());
+});
+
+test('settlement simulation owns idle decisions without periodic model calls', async () => {
+    let calls = 0;
+    const agent = { isIdle: () => true, prompter: {}, settlement: { enabled: () => true }, hybrid: {
+        enabled: () => true, ownsWork: () => false, takeReplan: () => null,
+    }, handleMessage: async () => { calls++; } };
+    const loop = new SelfPrompter(agent);
+    loop.state = 1; loop.prompt = 'routine'; loop.nextRoutineDecision = 0;
+    const pending = loop.startLoop();
+    setTimeout(() => { loop.interrupt = true; }, 20);
+    await pending;
+    assert.equal(calls, 0);
+});

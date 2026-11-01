@@ -1,73 +1,134 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Mindcraft</title>
+    <title>Mindcraft 🌸</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Nunito:ital,wght@0,400;0,600;0,800;1,400&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
+        :root {
+            --bg-0: #171225;
+            --bg-1: #1c1530;
+            --bg-2: #221a38;
+            --bg-3: #281f42;
+            --border: rgba(216, 160, 220, 0.28);
+            --text-1: #e9d7ee;
+            --text-2: #b395c2;
+            --accent: #ff8fb8;
+            --accent-strong: #f76fa4;
+            --success: #5fdca0;
+            --danger: #ff7d92;
+            --warning: #ffb45e;
+            --panel: rgba(38, 28, 58, 0.85);
+            --input-bg: #2a2144;
+            --btn-text: #ffe6f2;
+            --radius-lg: 22px;
+            --radius-md: 14px;
+            --shadow-soft: 0 14px 30px rgba(0, 0, 0, 0.35);
+            --glow-pink: rgba(255, 143, 184, 0.22);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background: #1a1a1a;
-            color: #e0e0e0;
+            font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            margin: 24px;
+            min-height: 100vh;
+            color: var(--text-1);
+            background:
+                radial-gradient(circle at top left, rgba(255, 143, 184, 0.16), transparent 32%),
+                radial-gradient(circle at bottom right, rgba(95, 220, 160, 0.10), transparent 36%),
+                linear-gradient(180deg, var(--bg-0) 0%, #141021 100%);
         }
-        #agents {
-            background: #2d2d2d;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
+
         h1 {
-            color: #ffffff;
+            color: var(--accent-strong);
+            font-family: 'Baloo 2', 'Nunito', system-ui, sans-serif;
+            font-size: 2rem;
+            letter-spacing: -0.03em;
+            margin: 0;
         }
+
+        button, input, select {
+            font-family: inherit;
+        }
+
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 143, 184, 0.4); border-radius: 999px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+
+        .title-row {
+            margin-bottom: 18px;
+        }
+
+        #agents {
+            display: grid;
+            gap: 16px;
+            padding: 0;
+            background: transparent;
+            border-radius: var(--radius-lg);
+            box-shadow: none;
+        }
+
         .agent {
-            margin: 10px 0;
-            padding: 10px;
-            background: #363636;
-            border-radius: 4px;
+            margin: 0;
+            padding: 18px;
+            background: linear-gradient(180deg, rgba(44, 33, 70, 0.96), rgba(35, 26, 56, 0.96));
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft), 0 0 24px rgba(255, 143, 184, 0.06);
             display: flex;
             flex-direction: column;
             align-items: stretch;
         }
         .restart-btn, .start-btn, .stop-btn {
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-left: 5px;
-        }
-        .restart-btn {
-            background: #4CAF50;
-        }
-        .start-btn {
-            background: #2196F3;
-        }
-        .stop-btn {
-            background: #f44336;
-        }
-        .restart-btn:hover { background: #45a049; }
-        .start-btn:hover { background: #1976D2; }
-        .stop-btn:hover { background: #d32f2f; }
-        .gear-btn {
-            background: #505050;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            padding: 2px 6px;
+            color: var(--btn-text);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 7px 13px;
+            border-radius: var(--radius-md);
             cursor: pointer;
             margin-left: 6px;
-            font-size: 0.9em;
+            font-weight: 600;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
         }
-        .gear-btn:hover { background: #5a5a5a; }
+
+        .restart-btn {
+            background: linear-gradient(180deg, rgba(95, 220, 160, 0.3), rgba(74, 180, 130, 0.3));
+        }
+        .start-btn {
+            background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+        }
+        .stop-btn {
+            background: linear-gradient(180deg, rgba(255, 167, 147, 0.3), rgba(255, 140, 120, 0.3));
+        }
+
+        .restart-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(95, 220, 160, 0.28); background: linear-gradient(180deg, rgba(95, 220, 160, 0.4), rgba(74, 180, 130, 0.4)); }
+        .start-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(247, 111, 164, 0.35); background: linear-gradient(180deg, #ffa3c6, #f983b2); }
+        .stop-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(255, 140, 120, 0.3); background: linear-gradient(180deg, rgba(255, 167, 147, 0.4), rgba(255, 140, 120, 0.4)); }
+        .gear-btn {
+            background: rgba(255, 143, 184, 0.15);
+            color: var(--text-1);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 4px 10px;
+            cursor: pointer;
+            margin-left: 6px;
+            font-size: 0.85em;
+            transition: background 0.12s ease, transform 0.12s ease;
+        }
+        .gear-btn:hover { background: rgba(255, 143, 184, 0.3); transform: translateY(-1px); }
         .status-icon {
             font-size: 12px;
             margin-right: 8px;
         }
         .status-icon.online {
-            color: #4CAF50;
+            color: var(--success);
+            text-shadow: 0 0 12px rgba(47, 212, 124, 0.55);
         }
         .status-icon.offline {
-            color: #f44336;
+            color: var(--danger);
         }
         #settingsForm {
             display: grid;
@@ -78,10 +139,11 @@
         .setting-wrapper {
             display: flex;
             align-items: center;
-            gap: 6px;
-            background: #3a3a3a;
-            padding: 6px 8px;
-            border-radius: 4px;
+            gap: 8px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            padding: 9px 11px;
+            border-radius: var(--radius-md);
             width: 100%;
             box-sizing: border-box;
             min-width: 0;
@@ -94,15 +156,24 @@
             white-space: nowrap;
         }
         .setting-wrapper input[type="text"],
-        .setting-wrapper input[type="number"] {
+        .setting-wrapper input[type="number"],
+        .setting-wrapper select {
             flex: 1 1 0;
-            background: #262626;
-            border: 1px solid #555;
-            color: #e0e0e0;
-            border-radius: 4px;
-            padding: 4px 6px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            color: var(--text-1);
+            border-radius: 8px;
+            padding: 6px 9px;
             max-width: 100%;
             min-width: 0;
+        }
+
+        .setting-wrapper input:focus,
+        .setting-wrapper select:focus,
+        .msg-input:focus {
+            outline: none;
+            border-color: rgba(247, 111, 164, 0.65);
+            box-shadow: 0 0 0 3px rgba(255, 143, 184, 0.22);
         }
         .setting-wrapper input[type="checkbox"] {
             transform: scale(1.2);
@@ -121,8 +192,8 @@
         }
         .last-message {
             font-style: italic;
-            color: #aaa;
-            margin-top: 5px;
+            color: var(--text-2);
+            margin-top: 8px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -145,21 +216,23 @@
             align-items: start;
         }
         .agent-grid .cell {
-            background: #3a3a3a;
-            padding: 6px 8px;
-            border-radius: 4px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            padding: 8px 10px;
+            border-radius: var(--radius-md);
         }
         .agent-grid .cell.title {
             background: transparent;
             padding: 0;
         }
         .agent-inventory {
-            margin-top: 8px;
-            background: #2f2f2f;
-            border-radius: 6px;
-            padding: 8px;
+            margin-top: 12px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 12px;
         }
-        .agent-inventory h3 { margin: 0 0 6px 0; font-size: 1em; }
+        .agent-inventory h3 { margin: 0 0 8px 0; font-size: 1em; letter-spacing: -0.01em; }
         .inventory-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -169,7 +242,7 @@
         .inventory-grid.empty {
             display: grid;
             grid-template-columns: 1fr;
-            color: #999;
+            color: var(--text-2);
         }
         .inv-item {
             position: relative;
@@ -178,11 +251,11 @@
             justify-items: center;
             align-items: center;
             gap: 4px;
-            background: #2f2f2f;
-            border: 1px solid #444;
-            border-radius: 6px;
-            padding: 8px;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 9px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
         }
         .inv-img {
             width: 32px;
@@ -194,7 +267,7 @@
             position: absolute;
             right: 6px;
             bottom: 6px;
-            background: rgba(0,0,0,0.6);
+            background: var(--accent-strong);
             color: #fff;
             font-size: 0.8em;
             padding: 2px 6px;
@@ -202,7 +275,7 @@
         }
         .inv-name {
             font-size: 0.85em;
-            color: #ccc;
+            color: var(--text-2);
             text-align: center;
             max-width: 100%;
             overflow: hidden;
@@ -217,17 +290,17 @@
         }
         .armor-slot {
             position: relative;
-            width: 36px;
-            height: 36px;
-            border-radius: 6px;
-            background: #2f2f2f;
-            border: 1px solid #444;
+            width: 38px;
+            height: 38px;
+            border-radius: var(--radius-md);
+            background: var(--panel);
+            border: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: center;
         }
         .armor-slot.empty { opacity: 0.4; }
-        .armor-placeholder { color: #888; font-size: 0.9em; }
+        .armor-placeholder { color: var(--text-2); font-size: 0.9em; }
         .agent-details-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -243,30 +316,36 @@
         }
         .msg-input {
             width: calc(100% - 8px);
-            background: #262626;
-            border: 1px solid #555;
-            color: #e0e0e0;
-            border-radius: 4px;
-            padding: 4px 6px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            color: var(--text-1);
+            border-radius: var(--radius-md);
+            padding: 7px 9px;
         }
+
         .neutral-btn {
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 4px;
+            color: var(--btn-text);
+            border: 1px solid var(--border);
+            padding: 7px 12px;
+            border-radius: var(--radius-md);
             cursor: pointer;
             margin-left: 5px;
-            background: #505050;
+            background: rgba(255, 143, 184, 0.12);
+            font-weight: 600;
+            transition: transform 0.12s ease, background 0.12s ease;
         }
-        .neutral-btn:hover { background: #5a5a5a; }
+
+        .neutral-btn:hover { background: rgba(255, 143, 184, 0.22); transform: translateY(-1px); }
         .neutral-btn:disabled {
-            background: #383838;
-            color: #666;
+            background: rgba(216, 160, 220, 0.08);
+            color: #7d6a90;
             cursor: not-allowed;
+            border-color: transparent;
         }
+
         .msg-input:disabled {
-            background: #1a1a1a;
-            color: #666;
+            background: rgba(38, 28, 58, 0.7);
+            color: #7d6a90;
             cursor: not-allowed;
         }
         .page-footer {
@@ -274,12 +353,14 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: #2d2d2d;
-            padding: 16px;
+            background: rgba(23, 18, 37, 0.92);
+            backdrop-filter: blur(14px);
+            border-top: 1px solid var(--border);
+            padding: 16px 24px;
             display: flex;
             gap: 12px;
             justify-content: space-between;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+            box-shadow: 0 -18px 35px rgba(247, 111, 164, 0.18);
         }
         body {
             padding-bottom: 80px;  /* Make room for footer */
@@ -290,26 +371,35 @@
             gap: 8px;
             margin: 6px 0;
             font-size: 0.9em;
-            color: #cccccc;
+            color: var(--text-2);
             width: 100%;
             box-sizing: border-box;
         }
         .agent-stats-row .stat {
-            background: #3a3a3a;
-            padding: 6px 8px;
-            border-radius: 4px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            padding: 8px 10px;
+            border-radius: var(--radius-md);
         }
+
         .status-badge {
-            font-size: 0.75em;
-            margin-left: 8px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            background: #3a3a3a;
-            color: #cccccc;
+            font-size: 0.78em;
+            margin-left: 10px;
+            padding: 4px 9px;
+            border-radius: 999px;
+            background: rgba(255, 93, 108, 0.12);
+            color: var(--danger);
             text-transform: lowercase;
+            border: 1px solid rgba(255, 93, 108, 0.24);
         }
-        .status-badge.online { color: #4CAF50; }
-        .status-badge.offline { color: #f44336; }
+
+        .status-badge.online {
+            color: var(--success);
+            background: rgba(47, 212, 124, 0.12);
+            border-color: rgba(47, 212, 124, 0.26);
+        }
+
+        .status-badge.offline { color: var(--danger); }
         .title-row {
             display: flex;
             align-items: center;
@@ -332,29 +422,32 @@
             z-index: 1000;
         }
         .modal {
-            background: #2d2d2d;
-            border-radius: 8px;
-            width: 80vw;
-            height: 80vh;
+            background: linear-gradient(180deg, #2a2144, #221a38);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            width: min(92vw, 1100px);
+            height: min(84vh, 760px);
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            box-shadow: 0 30px 80px rgba(247, 111, 164, 0.3);
         }
         .modal-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 12px 16px;
-            border-bottom: 1px solid #3a3a3a;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
         }
+
         .modal-close-btn {
-            background: #f44336;
-            color: #fff;
+            background: linear-gradient(180deg, rgba(255, 167, 147, 0.3), rgba(255, 140, 120, 0.3));
+            color: var(--btn-text);
             border: none;
-            border-radius: 4px;
-            padding: 4px 8px;
+            border-radius: var(--radius-md);
+            padding: 7px 12px;
             cursor: pointer;
+            font-weight: 600;
         }
         .modal-body {
             flex: 1 1 auto;
@@ -365,16 +458,17 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 12px 16px;
-            border-top: 1px solid #3a3a3a;
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
         }
-        .footer-left { color: #cccccc; font-style: italic; }
+
+        .footer-left { color: var(--text-2); font-style: italic; }
     </style>
 </head>
 <body>
     <div class="title-row">
         <div class="title-left">
-            <h1 style="margin: 0;">Mindcraft</h1>
+            <h1 style="margin: 0;">🌸 Mindcraft</h1>
             <span id="msStatus" class="status-badge offline">mindserver offline</span>
         </div>
         <div class="title-spacer"></div>
@@ -402,7 +496,7 @@
                 <div id="createAgentSection">
                     <div id="profileStatus" style="margin:6px 0;">Profile: Not uploaded</div>
                     <div id="settingsForm"></div>
-                    <div id="createError" style="color:#f44336;margin-top:10px;"></div>
+                    <div id="createError" style="color:var(--danger);margin-top:12px;font-weight:600;"></div>
                     <input type="file" id="profileFileInput" accept=".json,application/json" style="display:none">
                 </div>
             </div>
@@ -426,13 +520,13 @@
             <div class="modal-body">
                 <div id="agentSettingsSection">
                     <div id="agentSettingsForm"></div>
-                    <div id="agentSettingsError" style="color:#f44336;margin-top:10px;"></div>
+                    <div id="agentSettingsError" style="color:var(--danger);margin-top:12px;font-weight:600;"></div>
                 </div>
             </div>
             <div class="modal-footer">
                 <div class="footer-left" id="agentSettingsFooter">Modify settings then apply to restart the agent.</div>
                 <div class="footer-actions">
-                    <button id="discardAgentSettingsBtn" class="stop-btn" style="background:#777;">Discard Changes</button>
+                    <button id="discardAgentSettingsBtn" class="neutral-btn">Discard Changes</button>
                     <button id="applyAgentSettingsBtn" class="start-btn" disabled>Apply & Restart</button>
                 </div>
             </div>
@@ -558,8 +652,8 @@
                 const wrapper = document.createElement('div');
                 wrapper.className = 'setting-wrapper';
                 const label = document.createElement('label');
-                label.textContent = key;
-                label.title = cfg.description || '';
+                label.textContent = key === 'speak' ? '음성' : key;
+                label.title = key === 'speak' ? '이 봇의 대사를 PC 스피커로 읽습니다.' : (cfg.description || '');
                 let input;
                 switch (cfg.type) {
                     case 'boolean':
@@ -713,7 +807,7 @@
                     }
                     if (actionEl && st.action) {
                         actionEl.textContent = `${st.action.current || 'Idle'}`;
-                        const _statusColors = { acting: '#4CAF50', chatting: '#42a5f5', thinking: '#9e9e9e', stopped: '#f44336', idle: '#888' };
+                        const _statusColors = { acting: 'var(--success)', chatting: 'var(--accent)', thinking: 'var(--text-2)', stopped: 'var(--danger)', idle: 'var(--text-2)' };
                         actionEl.style.color = _statusColors[st.action.kind] || '';
                     }
                     if (invGrid && st.inventory?.counts) {
@@ -739,7 +833,7 @@
                                 .join('');
                         } else {
                             invGrid.classList.add('empty');
-                            invGrid.innerHTML = '<div class="cell">(empty)</div>';
+                            invGrid.innerHTML = '<div class="cell" style="color:var(--text-2);">(empty)</div>';
                         }
                     }
                 }
@@ -767,20 +861,109 @@
         const agentSettingsTitle = document.getElementById('agentSettingsTitle');
         let currentAgentName = null;
         let originalAgentSettings = null;
+        let modelChoices = null;
+
+        const MODEL_PROVIDERS = [
+            { id: 'cli/cursor', label: 'Cursor CLI' },
+            { id: 'cli/chatgpt', label: 'ChatGPT CLI' },
+            { id: 'cli/claude', label: 'Claude CLI' },
+            { id: 'openai', label: 'OpenAI' },
+            { id: 'anthropic', label: 'Anthropic' },
+            { id: 'google', label: 'Google' },
+            { id: 'xai', label: 'xAI' },
+            { id: 'ollama', label: 'Ollama' },
+            { id: 'openrouter', label: 'OpenRouter' },
+            { id: 'groq', label: 'Groq' },
+            { id: 'mistral', label: 'Mistral' },
+            { id: 'deepseek', label: 'DeepSeek' },
+            { id: 'qwen', label: 'Qwen' },
+            { id: 'huggingface', label: 'Hugging Face' },
+            { id: 'hyperbolic', label: 'Hyperbolic' },
+            { id: 'lmstudio', label: 'LM Studio' },
+            { id: 'replicate', label: 'Replicate' },
+            { id: 'novita', label: 'Novita' },
+            { id: 'vllm', label: 'vLLM' },
+            { id: 'mercury', label: 'Mercury' },
+            { id: 'cerebras', label: 'Cerebras' },
+            { id: 'azure', label: 'Azure' },
+        ];
+
+        function guessProvider(model) {
+            const text = String(model || '').toLowerCase();
+            if (!text) return '';
+            if (text.includes('gpt') || text.includes('o1') || text.includes('o3')) return 'openai';
+            if (text.includes('claude')) return 'anthropic';
+            if (text.includes('gemini')) return 'google';
+            if (text.includes('grok')) return 'xai';
+            if (text.includes('mistral')) return 'mistral';
+            if (text.includes('deepseek')) return 'deepseek';
+            if (text.includes('qwen')) return 'qwen';
+            return '';
+        }
+
+        function splitModel(model) {
+            const text = String(model || '').trim();
+            const parts = text.split('/').filter(Boolean);
+            if (parts[0] === 'cli' && parts[1]) {
+                return { provider: `cli/${parts[1]}`, modelId: parts.slice(2).join('/') };
+            }
+            if (parts.length > 1 && MODEL_PROVIDERS.some(item => item.id === parts[0])) {
+                return { provider: parts[0], modelId: parts.slice(1).join('/') };
+            }
+            const guessed = guessProvider(text);
+            if (guessed) return { provider: guessed, modelId: text };
+            return { provider: '', modelId: text };
+        }
+
+        function joinModel(provider, modelId) {
+            if (!provider) return modelId;
+            return modelId ? `${provider}/${modelId}` : provider;
+        }
+
+        function providerLabel(provider) {
+            return MODEL_PROVIDERS.find(item => item.id === provider)?.label || provider;
+        }
+
+        function cliName(provider) {
+            return String(provider || '').startsWith('cli/') ? provider.slice(4) : '';
+        }
+
+        function modelLabel(model) {
+            const { provider, modelId } = splitModel(model);
+            const name = providerLabel(provider);
+            if (!modelId) return name ? `${name} 기본 모델` : (model || '기본 모델');
+            const cli = cliName(provider);
+            if (cli) {
+                const match = (modelChoices?.[cli] || []).find(choice => choice.id === modelId);
+                return `${name} / ${match?.label || modelId}`;
+            }
+            return name ? `${name} / ${modelId}` : modelId;
+        }
+
+        async function ensureModelChoices(provider) {
+            if (!provider) return [];
+            if (!modelChoices) modelChoices = {};
+            const res = await fetch('/cli-models?provider=' + encodeURIComponent(provider) + '&t=' + Date.now());
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'model list failed');
+            modelChoices[provider] = Array.isArray(data.models) ? data.models : [];
+            return modelChoices[provider];
+        }
 
         function buildAgentSettingsForm(settings) {
             agentSettingsForm.innerHTML = '';
             agentSettingsForm.style.display = 'grid';
             agentSettingsForm.style.gridTemplateColumns = 'repeat(auto-fit, minmax(320px, 1fr))';
             agentSettingsForm.style.gap = '8px';
+            appendModelSetting(settings.profile?.model || '');
             Object.keys(settingsSpec).forEach(key => {
                 if (key === 'profile') return; // profile not edited here
                 const cfg = settingsSpec[key];
                 const wrapper = document.createElement('div');
                 wrapper.className = 'setting-wrapper';
                 const label = document.createElement('label');
-                label.textContent = key;
-                label.title = cfg.description || '';
+                label.textContent = key === 'speak' ? '음성' : key;
+                label.title = key === 'speak' ? '이 봇의 대사를 PC 스피커로 읽습니다.' : (cfg.description || '');
                 let input;
                 switch (cfg.type) {
                     case 'boolean':
@@ -809,19 +992,129 @@
             onAgentSettingsChanged();
         }
 
+        function fillModelOptions(provider, modelId) {
+            const select = document.getElementById('agent-model-id');
+            if (!select) return;
+            const cli = cliName(provider);
+            const fetched = cli ? ((modelChoices && modelChoices[cli]) || []).filter(choice => choice.id) : [];
+            const choices = [{ id: '', label: cli ? '계정 기본값' : '기본 모델' }, ...fetched];
+            const options = choices.slice();
+            if (modelId && !options.some(choice => choice.id === modelId)) {
+                options.push({ id: modelId, label: modelId });
+            }
+            select.innerHTML = '';
+            options.forEach(choice => {
+                const option = document.createElement('option');
+                option.value = choice.id;
+                option.textContent = choice.label;
+                select.appendChild(option);
+            });
+            select.value = options.some(choice => choice.id === modelId) ? modelId : '';
+        }
+
+        function appendModelSetting(model) {
+            const parsed = splitModel(model);
+            const wrapper = document.createElement('div');
+            wrapper.className = 'setting-wrapper';
+            wrapper.style.gridColumn = '1 / -1';
+            wrapper.style.flexDirection = 'column';
+            wrapper.style.alignItems = 'stretch';
+            const label = document.createElement('label');
+            label.textContent = 'model';
+            label.title = '제공자와 모델. CLI와 API를 고를 수 있다. 적용하면 이 플레이어만 다시 접속한다.';
+            label.style.flex = '0 0 auto';
+
+            const provider = document.createElement('select');
+            provider.id = 'agent-model-provider';
+            if (!parsed.provider) {
+                const blank = document.createElement('option');
+                blank.value = '';
+                blank.textContent = '제공자 선택';
+                provider.appendChild(blank);
+            }
+            const providers = MODEL_PROVIDERS.slice();
+            if (parsed.provider && !providers.some(item => item.id === parsed.provider)) {
+                providers.unshift({ id: parsed.provider, label: parsed.provider });
+            }
+            providers.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = item.label;
+                provider.appendChild(option);
+            });
+            provider.value = parsed.provider;
+
+            const select = document.createElement('select');
+            select.id = 'agent-model-id';
+            const custom = document.createElement('input');
+            custom.type = 'text';
+            custom.id = 'agent-model-custom';
+            custom.placeholder = '모델 id 직접 입력';
+            custom.title = '목록에 없는 모델 id. 비우면 가운데 선택을 사용한다.';
+
+            provider.addEventListener('change', async () => {
+                const next = provider.value;
+                custom.value = '';
+                const cli = cliName(next);
+                if (cli) {
+                    select.innerHTML = '';
+                    const loading = document.createElement('option');
+                    loading.value = '';
+                    loading.textContent = '목록 불러오는 중...';
+                    select.appendChild(loading);
+                    try {
+                        await ensureModelChoices(cli);
+                    } catch {
+                        if (!modelChoices) modelChoices = {};
+                        modelChoices[cli] = modelChoices[cli] || [];
+                    }
+                }
+                fillModelOptions(next, '');
+                onAgentSettingsChanged();
+            });
+            select.addEventListener('change', onAgentSettingsChanged);
+            custom.addEventListener('input', onAgentSettingsChanged);
+
+            wrapper.appendChild(label);
+            wrapper.appendChild(provider);
+            wrapper.appendChild(select);
+            wrapper.appendChild(custom);
+            agentSettingsForm.appendChild(wrapper);
+            fillModelOptions(provider.value, parsed.modelId);
+        }
+
         function openAgentSettings(name) {
             currentAgentName = name;
             agentSettingsTitle.textContent = `${name} Settings`;
-            fetchAgentSettings(name).then(settings => {
+            agentSettingsForm.innerHTML = '<div class="setting-wrapper">설정을 불러오는 중...</div>';
+            agentSettingsModal.style.display = 'flex';
+            applyBtn.disabled = true;
+            fetchAgentSettings(name).then(async settings => {
+                if (currentAgentName !== name) return;
+                const { provider } = splitModel(settings?.profile?.model || '');
+                const cli = cliName(provider);
+                if (cli) {
+                    try {
+                        await ensureModelChoices(cli);
+                    } catch {
+                        // The form still opens with the default and the custom id field.
+                    }
+                }
+                if (currentAgentName !== name) return;
                 originalAgentSettings = JSON.parse(JSON.stringify(settings || {}));
                 buildAgentSettingsForm(settings || {});
-                agentSettingsModal.style.display = 'flex';
             });
         }
         window.openAgentSettings = openAgentSettings;
 
         function getEditedAgentSettings() {
-            const newSettings = { profile: (originalAgentSettings && originalAgentSettings.profile) || {} };
+            const profile = JSON.parse(JSON.stringify((originalAgentSettings && originalAgentSettings.profile) || {}));
+            const provider = document.getElementById('agent-model-provider')?.value || '';
+            const custom = document.getElementById('agent-model-custom');
+            const selected = document.getElementById('agent-model-id');
+            const modelId = (custom?.value || '').trim() || (selected?.value || '').trim();
+            profile.model = joinModel(provider, modelId);
+            const newSettings = { profile };
             Object.keys(settingsSpec).forEach(key => {
                 if (key === 'profile') return;
                 const cfg = settingsSpec[key];
@@ -855,7 +1148,8 @@
         function onAgentSettingsChanged() {
             if (!originalAgentSettings) { applyBtn.disabled = true; return; }
             const edited = getEditedAgentSettings();
-            applyBtn.disabled = shallowEqual(edited, originalAgentSettings);
+            const sameModel = (edited.profile?.model || '') === (originalAgentSettings.profile?.model || '');
+            applyBtn.disabled = shallowEqual(edited, originalAgentSettings) && sameModel;
         }
 
         function closeAgentSettings() {
@@ -888,6 +1182,8 @@
             socket.emit('set-agent-settings', currentAgentName, edited);
             // Update local settings immediately
             agentSettings[currentAgentName] = { ...edited, fetched: true };
+            const modelEl = document.getElementById(`model-${currentAgentName}`);
+            if (modelEl) modelEl.textContent = `model: ${modelLabel(edited.profile?.model)}`;
             updateAgentViewer(currentAgentName);
             closeAgentSettings();
         });
@@ -897,6 +1193,7 @@
 
         function renderAgentCard(agent) {
             const cfg = agentSettings[agent.name] || {};
+            const shownModel = modelLabel(cfg.profile?.model);
             const showViewer = agent.in_game && cfg.render_bot_view === true;
             const viewerPort = agent.viewerPort;
             const viewerHTML = showViewer ? `<div class="agent-view-container"><iframe class="agent-viewer" id="viewer-${agent.name}" src="http://localhost:${viewerPort}"></iframe></div>` : '';
@@ -907,12 +1204,14 @@
                     <div class="agent" id="agent-${agent.name}">
                         <div class="agent-grid">
                             <div class="cell title" style="grid-column: 1 / -1; display:flex; align-items:center; justify-content:space-between;">
-                                <span><span class="status-icon ${agent.in_game ? 'online' : 'offline'}">●</span>${agent.name}${agent.socket_connected && !agent.in_game ? '<span style="margin-left:6px;color:#f0ad4e;">joining...</span>' : ''}
+                                <span><span class="status-icon ${agent.in_game ? 'online' : 'offline'}">●</span>${agent.name}${agent.socket_connected && !agent.in_game ? '<span style="margin-left:8px;color:var(--warning);font-size:0.9em;font-weight:600;">joining...</span>' : ''}
+                                    <button class="gear-btn" id="speakBtn-${agent.name}" title="이 봇의 대사를 PC 스피커로 읽습니다" onclick="toggleSpeak('${agent.name}')">${cfg.speak === false ? '음성 켜기' : '음성 끄기'}</button>
                                     <button class="gear-btn" title="Settings" onclick="openAgentSettings('${agent.name}')">⚙</button>
                                     <button class="gear-btn" title="Inventory" onclick="toggleDetails('${agent.name}')">Inventory</button>
                                 </span>
                             </div>
                             ${showViewer ? `<div class="cell" style="grid-row: span 3; padding:0;">${viewerHTML}</div>` : ''}
+                            <div class="cell" id="model-${agent.name}">model: ${shownModel}</div>
                             <div class="cell" id="action-${agent.name}">action: -</div>
                             <div class="cell" id="mode-${agent.name}">gamemode: -</div>
                             <div class="cell" id="health-${agent.name}">health: -</div>
@@ -945,7 +1244,7 @@
 
         async function renderAgents(agents) {
             if (!agents.length) {
-                agentsDiv.innerHTML = '<div class="agent">No agents connected</div>';
+                agentsDiv.innerHTML = '<div class="agent" style="text-align:center;color:var(--text-2);font-weight:600;">No agents connected yet</div>';
                 return;
             }
 
@@ -1049,6 +1348,16 @@
                 }
             });
         });
+
+        function toggleSpeak(name) {
+            const next = agentSettings[name]?.speak === false;
+            if (!agentSettings[name]) agentSettings[name] = {};
+            agentSettings[name].speak = next;
+            const btn = document.getElementById(`speakBtn-${name}`);
+            if (btn) btn.textContent = next ? '음성 끄기' : '음성 켜기';
+            socket.emit('set-speak', name, next);
+        }
+        window.toggleSpeak = toggleSpeak;
 
         function restartAgent(n) { socket.emit('restart-agent', n); }
         function disconnectAgent(n) { socket.emit('stop-agent', n); }

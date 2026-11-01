@@ -4,7 +4,8 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as mindcraft from './mindcraft.js';
-import { readFileSync } from 'fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs';
+import { listCliModels } from './cli_models.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Mindserver is:
@@ -18,6 +19,61 @@ const agent_connections = {};
 const agent_listeners = [];
 
 const settings_spec = JSON.parse(readFileSync(path.join(__dirname, 'public/settings_spec.json'), 'utf8'));
+const players_dir = path.join(__dirname, '../../players');
+const bots_dir = path.join(__dirname, '../../bots');
+
+function uiSettingsPath(agentName) {
+    return path.join(bots_dir, agentName, 'ui-settings.json');
+}
+
+function pickUiSettings(settings) {
+    const saved = {};
+    if (!settings) return saved;
+    for (const key of Object.keys(settings_spec)) {
+        if (key === 'profile') continue;
+        if (key in settings) saved[key] = settings[key];
+    }
+    return saved;
+}
+
+function persistAgentSettings(agentName, settings) {
+    if (!agentName) return;
+    const dir = path.join(bots_dir, agentName);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(uiSettingsPath(agentName), JSON.stringify(pickUiSettings(settings), null, 4) + '\n');
+    console.log(`Saved UI settings for ${agentName}`);
+}
+
+export function loadSavedAgentSettings(agentName) {
+    try {
+        return pickUiSettings(JSON.parse(readFileSync(uiSettingsPath(agentName), 'utf8')));
+    } catch {
+        return null;
+    }
+}
+
+function persistProfileModel(profile) {
+    if (!profile?.name || !profile?.model) return;
+    let files = [];
+    try {
+        files = readdirSync(players_dir).filter(file => file.endsWith('.json'));
+    } catch {
+        return;
+    }
+    for (const file of files) {
+        const fp = path.join(players_dir, file);
+        let data;
+        try {
+            data = JSON.parse(readFileSync(fp, 'utf8'));
+        } catch {
+            continue;
+        }
+        if (data.name !== profile.name || data.model === profile.model) continue;
+        data.model = profile.model;
+        writeFileSync(fp, JSON.stringify(data, null, 4) + '\n');
+        console.log(`Saved model for ${profile.name}: ${profile.model}`);
+    }
+}
 
 class AgentConnection {
     constructor(settings, viewer_port) {
@@ -53,6 +109,17 @@ export function createMindServer(host_public = false, port = 8080) {
     // Serve static files
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
     app.use(express.static(path.join(__dirname, 'public')));
+
+    app.get('/cli-models', async (req, res) => {
+        const provider = String(req.query.provider || '');
+        try {
+            const models = await listCliModels(provider);
+            res.set('Cache-Control', 'no-store');
+            res.json({ provider, models });
+        } catch (error) {
+            res.status(502).json({ provider, models: [], error: String(error.message || error) });
+        }
+    });
 
     // Texture proxy: resolve item/block textures using minecraft-assets with version fallback
     app.get('/assets/item/:agent/:name.png', async (req, res) => {
@@ -206,12 +273,30 @@ export function createMindServer(host_public = false, port = 8080) {
             agent_connections[agentName].socket.emit('chat-message', curAgentName, json);
         });
 
+        socket.on('set-speak', (agentName, enabled) => {
+            const agent = agent_connections[agentName];
+            if (!agent) return;
+            const merged = { ...agent.settings, speak: Boolean(enabled) };
+            agent.setSettings(merged);
+            persistAgentSettings(agentName, merged);
+            if (agent.socket) agent.socket.emit('update-settings', merged);
+        });
+
         socket.on('set-agent-settings', (agentName, settings) => {
             const agent = agent_connections[agentName];
-            if (agent) {
-                agent.setSettings(settings);
-                agent.socket.emit('restart-agent');
-            }
+            if (!agent) return;
+            const merged = {
+                ...agent.settings,
+                ...settings,
+                profile: {
+                    ...(agent.settings?.profile || {}),
+                    ...(settings?.profile || {}),
+                },
+            };
+            agent.setSettings(merged);
+            persistProfileModel(merged.profile);
+            persistAgentSettings(agentName, merged);
+            if (agent.socket) agent.socket.emit('restart-agent');
         });
 
         socket.on('restart-agent', (agentName) => {
@@ -279,7 +364,7 @@ export function createMindServer(host_public = false, port = 8080) {
     if (host_public) {
         console.log('Public hosting not supported yet. Using localhost.');
     }
-    const host = 'localhost';
+    const host = '127.0.0.1';
     server.listen(port, host, () => {
         console.log(`MindServer running on port ${port} on host ${host}`);
     });

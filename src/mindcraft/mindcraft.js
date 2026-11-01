@@ -21,7 +21,7 @@ export async function init(host_public=false, port=8080, auto_open_ui=true) {
         setTimeout(() => {
             // check if browser listener is already open
             if (numStateListeners() === 0) {
-                open('http://localhost:'+port);
+                open('http://127.0.0.1:'+port);
             }
         }, 3000);
     }

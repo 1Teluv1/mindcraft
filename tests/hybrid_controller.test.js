@@ -116,3 +116,25 @@ test('routine goals are local and blocked resources are cooled down', async () =
     await t.controller.tick(true);
     assert.equal(t.calls(), 3);
 });
+
+test('player input cancels routine goals but preserves an explicit item request', async () => {
+    const t = setup();
+    let cancelled = 0;
+    t.io.cancelRoutine = () => cancelled++;
+    await t.controller.tick(true);
+    assert.equal(t.controller.goal.routine, true);
+    t.controller.pauseForInput();
+    assert.equal(t.controller.goal, null);
+    t.controller.setGoal('stone_axe', 1, 'player');
+    t.controller.pauseForInput();
+    assert.equal(t.controller.goal.owner, 'player');
+    assert.equal(cancelled, 2);
+});
+
+test('a player input during an awaited routine cannot start a stale work step', async () => {
+    const t = setup();
+    t.io.routine = async () => { t.controller.pauseForInput(); return false; };
+    await t.controller.tick(true);
+    assert.equal(t.calls(), 0);
+    assert.equal(t.controller.goal, null);
+});

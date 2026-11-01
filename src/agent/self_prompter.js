@@ -1,4 +1,5 @@
 import settings from './settings.js';
+import * as world from './library/world.js';
 
 const STOPPED = 0
 const ACTIVE = 1
@@ -12,6 +13,7 @@ export class SelfPrompter {
         this.prompt = '';
         this.idle_time = 0;
         this.cooldown = 2000;
+        this.nextRoutineDecision = Date.now() + 30000;
     }
 
     start(prompt) {
@@ -63,9 +65,8 @@ export class SelfPrompter {
         console.log('starting self-prompt loop')
         this.loop_active = true;
         let no_command_count = 0;
-        const MAX_NO_COMMAND = 3;
+        const MAX_BACKOFF_STEPS = 4;
         while (!this.interrupt && this.state === ACTIVE) {
-            const msg = `You are self-prompting with the goal: '${this.prompt}'. Your next response MUST contain a command with this syntax: !commandName. Respond:`;
             if (this.agent.hybrid?.enabled() && !settings.task) {
                 const hybrid = this.agent.hybrid;
                 const routine = this.prompt === settings.life_goal;
@@ -79,26 +80,39 @@ export class SelfPrompter {
                     continue;
                 }
                 if (routine) {
-                    // The local scheduler handles routine work; no periodic LLM polling.
-                    await new Promise(r => setTimeout(r, 500));
-                    continue;
+                    if (this.agent.settlement?.enabled()) {
+                        await new Promise(r => setTimeout(r, 500));
+                        continue;
+                    }
+                    // Resource steps stay local; ask the model only for occasional idle decisions.
+                    if (Date.now() < this.nextRoutineDecision || this.agent.actions?.resume_func) {
+                        await new Promise(r => setTimeout(r, 500));
+                        continue;
+                    }
+                    this.nextRoutineDecision = Date.now() + Math.max(15000, Number(settings.autonomy_decision_ms) || 30000);
                 }
             }
+            let scene = '';
+            try {
+                scene = world.getSurroundingsSummary(this.agent.bot);
+            } catch {
+                scene = '';
+            }
+            const sight = scene ? `\n지금 주변:\n${scene}\n` : '\n';
+            const msg = `지금 스스로 다음 행동을 고른다. 목표: '${this.prompt}'.${sight}다음 답에는 명령을 하나만 넣는다. 형식은 !commandName이다. 결과를 본 뒤 다시 물어보니, 멈추지 말고 다음 행동을 한다. 플레이어가 기다리라고 하지 않았다면 !stay(-1)을 쓰지 않는다. 친구에게는 새로 전할 말이 있을 때만, 한 명에게만 말한다. 답은 항상 한국어다. 답:`;
             
             let used_command = await this.agent.handleMessage('system', msg, -1);
+            if (this.interrupt || this.state !== ACTIVE) break;
             if (!used_command) {
+                // keep the loop alive, but slow down so a silent brain can't spin it
                 no_command_count++;
-                if (no_command_count >= MAX_NO_COMMAND) {
-                    let out = `Agent did not use command in the last ${MAX_NO_COMMAND} auto-prompts. Stopping auto-prompting.`;
-                    this.agent.openChat(out);
-                    console.warn(out);
-                    this.state = STOPPED;
-                    break;
-                }
+                const steps = Math.min(no_command_count, MAX_BACKOFF_STEPS);
+                console.warn(`No command in the last ${no_command_count} auto-prompts. Asking again shortly.`);
+                await new Promise(r => setTimeout(r, this._cooldown() * steps));
             }
             else {
                 no_command_count = 0;
-                await new Promise(r => setTimeout(r, this.cooldown));
+                await new Promise(r => setTimeout(r, this._cooldown()));
             }
         }
         console.log('self prompt loop stopped')
@@ -114,7 +128,7 @@ export class SelfPrompter {
             else
                 this.idle_time = 0;
 
-            if (this.idle_time >= this.cooldown) {
+            if (this.idle_time >= this._cooldown()) {
                 console.log('Restarting self-prompting...');
                 this.startLoop();
                 this.idle_time = 0;
@@ -150,6 +164,11 @@ export class SelfPrompter {
         await this.agent.actions.stop();
         this.stopLoop();
         this.state = PAUSED;
+    }
+
+    _cooldown() {
+        const value = Number(settings.self_prompt_cooldown_ms);
+        return Number.isFinite(value) && value >= 1000 ? value : 15000;
     }
 
     shouldInterrupt(is_self_prompt) { // to be called from handleMessage

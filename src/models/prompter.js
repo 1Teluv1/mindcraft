@@ -9,6 +9,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { selectAPI, createModel } from './_model_map.js';
+import { renderForPrompt } from '../agent/shared_context.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,6 +51,8 @@ export class Prompter {
         this.cooldown = this.profile.cooldown ? this.profile.cooldown : 0;
         this.last_prompt_time = 0;
         this.awaiting_coding = false;
+        this.most_recent_msg_time = 0;
+        this.preempt_active = false;
 
         // for backwards compatibility, move max_tokens to params
         let max_tokens = null;
@@ -134,7 +137,7 @@ export class Prompter {
         }
     }
 
-    async replaceStrings(prompt, messages, examples=null, to_summarize=[], last_goals=null) {
+    async replaceStrings(prompt, messages, examples=null, to_summarize=[], last_goals=null, memoryText=undefined) {
         prompt = prompt.replaceAll('$NAME', this.agent.name);
 
         if (prompt.includes('$STATS')) {
@@ -164,15 +167,17 @@ export class Prompter {
         }
         if (prompt.includes('$EXAMPLES') && examples !== null)
             prompt = prompt.replaceAll('$EXAMPLES', await examples.createExampleMessage(messages));
-        if (prompt.includes('$MEMORY'))
-            prompt = prompt.replaceAll('$MEMORY', this.agent.history.memory);
+        if (prompt.includes('$MEMORY')) {
+            const memory = memoryText === undefined ? this.agent.history.memory : memoryText;
+            prompt = prompt.replaceAll('$MEMORY', memory);
+        }
         if (prompt.includes('$TO_SUMMARIZE'))
             prompt = prompt.replaceAll('$TO_SUMMARIZE', stringifyTurns(to_summarize));
         if (prompt.includes('$CONVO'))
             prompt = prompt.replaceAll('$CONVO', 'Recent conversation:\n' + stringifyTurns(messages));
         if (prompt.includes('$SELF_PROMPT')) {
             // if active or paused, show the current goal
-            let self_prompt = !this.agent.self_prompter.isStopped() ? `YOUR CURRENT ASSIGNED GOAL: "${this.agent.self_prompter.prompt}"\n` : '';
+            let self_prompt = !this.agent.self_prompter.isStopped() ? `현재 맡은 목표: "${this.agent.self_prompter.prompt}"\n` : '';
             prompt = prompt.replaceAll('$SELF_PROMPT', self_prompt);
         }
         if (prompt.includes('$LAST_GOALS')) {
@@ -203,6 +208,12 @@ export class Prompter {
         return prompt;
     }
 
+    _sharedContextPrompt() {
+        const shared = renderForPrompt();
+        if (!shared.memory && !shared.recent) return '';
+        return `지금까지의 공유 대화다. 답할 때 참고하고, 그대로 반복하지 마라.\n공유 기억:\n${shared.memory || '(없음)'}\n최근 공유 대화:\n${shared.recent || '(없음)'}`;
+    }
+
     async checkCooldown() {
         let elapsed = Date.now() - this.last_prompt_time;
         if (elapsed < this.cooldown && this.cooldown > 0) {
@@ -211,9 +222,17 @@ export class Prompter {
         this.last_prompt_time = Date.now();
     }
 
-    async promptConvo(messages) {
-        this.most_recent_msg_time = Date.now();
+    async promptConvo(messages, preempt = false) {
+        // Only a newer player message replaces an in-flight reply. Other work waits.
+        if (!preempt && this.preempt_active) {
+            while (this.preempt_active)
+                await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        if (preempt || !this.most_recent_msg_time)
+            this.most_recent_msg_time = Date.now();
         let current_msg_time = this.most_recent_msg_time;
+        if (preempt)
+            this.preempt_active = true;
 
         for (let i = 0; i < 3; i++) { // try 3 times to avoid hallucinations
             await this.checkCooldown();
@@ -223,25 +242,24 @@ export class Prompter {
 
             let prompt = this.profile.conversing;
             prompt = await this.replaceStrings(prompt, messages, this.convo_examples);
+            const settlement = this.agent.settlement?.context();
+            if (settlement) prompt += `\n${settlement}`;
+            const shared = this._sharedContextPrompt();
+            const convo = shared ? [{ role: 'system', content: shared }, ...messages] : messages;
             let generation;
 
             try {
-                generation = await this.chat_model.sendRequest(messages, prompt);
+                generation = await this.chat_model.sendRequest(convo, prompt, '***', {
+                    cancelPrevious: preempt && i === 0,
+                    foreground: true,
+                });
                 if (typeof generation !== 'string') {
                     console.error('Error: Generated response is not a string', generation);
                     throw new Error('Generated response is not a string');
                 }
-                console.log("Generated response:", generation);
-                await this._saveLog(prompt, messages, generation, 'conversation');
 
             } catch (error) {
                 console.error('Error during message generation or file writing:', error);
-                continue;
-            }
-
-            // Check for hallucination or invalid output
-            if (generation?.includes('(FROM OTHER BOT)')) {
-                console.warn('LLM hallucinated message as another bot. Trying again...');
                 continue;
             }
 
@@ -250,14 +268,31 @@ export class Prompter {
                 return '';
             }
 
+            if (!generation.trim()) {
+                console.warn(`${this.agent.name} got an empty reply, trying again.`);
+                continue;
+            }
+            console.log("Generated response:", generation);
+            await this._saveLog(prompt, messages, generation, 'conversation');
+
+            // Check for hallucination or invalid output
+            if (generation?.includes('(FROM OTHER BOT)')) {
+                console.warn('LLM hallucinated message as another bot. Trying again...');
+                continue;
+            }
+
             if (generation?.includes('</think>')) {
                 const [_, afterThink] = generation.split('</think>')
                 generation = afterThink
             }
 
+            if (preempt)
+                this.preempt_active = false;
             return generation;
         }
 
+        if (preempt && current_msg_time === this.most_recent_msg_time)
+            this.preempt_active = false;
         return '';
     }
 
@@ -277,10 +312,10 @@ export class Prompter {
         return resp;
     }
 
-    async promptMemSaving(to_summarize) {
+    async promptMemSaving(to_summarize, memoryText = undefined) {
         await this.checkCooldown();
         let prompt = this.profile.saving_memory;
-        prompt = await this.replaceStrings(prompt, null, null, to_summarize);
+        prompt = await this.replaceStrings(prompt, null, null, to_summarize, null, memoryText);
         let resp = await this.chat_model.sendRequest([], prompt);
         await this._saveLog(prompt, to_summarize, resp, 'memSaving');
         if (resp?.includes('</think>')) {
@@ -296,6 +331,7 @@ export class Prompter {
         let messages = this.agent.history.getHistory();
         messages.push({role: 'user', content: new_message});
         prompt = await this.replaceStrings(prompt, null, null, messages);
+        prompt += `\n${this._sharedContextPrompt()}`;
         let res = await this.chat_model.sendRequest([], prompt);
         return res.trim().toLowerCase() === 'respond';
     }

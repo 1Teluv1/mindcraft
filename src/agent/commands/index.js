@@ -235,23 +235,24 @@ export function getCommandDocs(agent) {
     const typeTranslations = {
         //This was added to keep the prompt the same as before type checks were implemented.
         //If the language model is giving invalid inputs changing this might help.
-        'float':             'number',
-        'int':               'number',
-        'BlockName':         'string',
-        'ItemName':          'string',
-        'BlockOrItemName':   'string',
-        'boolean':           'bool'
+        'float':             '숫자',
+        'int':               '숫자',
+        'BlockName':         '문자열',
+        'ItemName':          '문자열',
+        'BlockOrItemName':   '문자열',
+        'boolean':           '참거짓',
+        'string':            '문자열'
     }
-    let docs = `\nFor gather/craft item requests, prefer !obtainItem(item, totalQuantity). It runs the complete resource plan locally. Avoid issuing individual prerequisite commands.\n*COMMAND DOCS\n You can use the following commands to perform actions and get information about the world.
-    Use the commands with the syntax: !commandName or !commandName("arg1", 1.2, ...) if the command takes arguments.\n
-    Do not use codeblocks. Use double quotes for strings. Only use one command in each response, trailing commands and comments will be ignored.\n`;
+    let docs = `\n모으거나 만들라는 부탁은 !obtainItem(item, totalQuantity)을 우선한다. 재료와 재시도는 로컬에서 처리되므로, 중간 명령을 따로 쓰지 않는다.\n*명령 설명\n 아래 명령으로 행동하고 세계 정보를 확인한다.
+    형식은 !commandName 또는 인자가 있으면 !commandName("arg1", 1.2, ...)이다.\n
+    코드 블록을 쓰지 마라. 문자열은 큰따옴표를 쓴다. 한 답에 명령은 하나만 쓴다. 결과를 본 뒤 다시 물어보니, 부탁이 끝날 때까지 다음 명령을 이어간다. 플레이어가 기다리라고 하지 않았다면 !stay(-1)을 쓰지 않는다. 명령 뒤의 말과 주석은 무시된다. 플레이어에게 보이는 답은 항상 한국어다.\n`;
     for (let command of commandList) {
         if (agent.blocked_actions.includes(command.name)) {
             continue;
         }
         docs += command.name + ': ' + command.description + '\n';
         if (command.params) {
-            docs += 'Params:\n';
+            docs += '인자:\n';
             for (let param in command.params) {
                 docs += `${param}: (${typeTranslations[command.params[param].type]??command.params[param].type}) ${command.params[param].description}\n`;
             }

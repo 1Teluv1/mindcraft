@@ -429,3 +429,55 @@ export function getBiomeName(bot) {
     const biomeId = bot.world.getBiome(bot.entity.position);
     return mc.getAllBiomes()[biomeId].name;
 }
+
+const IGNORED_SURROUNDING_BLOCKS = new Set(['air', 'cave_air', 'void_air', 'dirt', 'grass_block', 'stone', 'deepslate',
+    'gravel', 'short_grass', 'tall_grass', 'fern', 'large_fern', 'seagrass', 'snow', 'water', 'lava', 'bedrock']);
+
+export function getSurroundingsSummary(bot) {
+    /**
+     * Describe what is around the bot in plain text, without any model call.
+     * @param {Bot} bot - The bot to describe the surroundings for.
+     * @returns {string} - A short summary of position, blocks, entities, and tools.
+     * @example
+     * let summary = world.getSurroundingsSummary(bot);
+     **/
+    const lines = [];
+    const pos = getPosition(bot);
+    let biome = 'unknown';
+    try {
+        biome = getBiomeName(bot);
+    } catch {
+        // biome lookup fails on unloaded chunks
+    }
+    lines.push(`위치: x ${Math.floor(pos.x)}, y ${Math.floor(pos.y)}, z ${Math.floor(pos.z)}, 생물군계 ${biome}.`);
+
+    const notable = [];
+    try {
+        const wanted = mc.getAllBlockIds([...IGNORED_SURROUNDING_BLOCKS]);
+        for (const block of getNearestBlocksWhere(bot, wanted, 16, 1000)) {
+            if (!block || notable.includes(block.name)) continue;
+            notable.push(block.name);
+            if (notable.length >= 12) break;
+        }
+    } catch {
+        // block scan fails on unloaded chunks
+    }
+    lines.push(notable.length ? `주변 블록: ${notable.join(', ')}.` : '주변 블록: 눈에 띄는 것 없음.');
+
+    const players = getNearbyPlayerNames(bot);
+    const mobs = [];
+    for (const entity of getNearbyEntities(bot, 16)) {
+        if (entity.type === 'player' || entity.name === 'item') continue;
+        if (entity.name && !mobs.includes(entity.name)) mobs.push(entity.name);
+    }
+    if (players.length) lines.push(`근처 플레이어: ${players.join(', ')}.`);
+    if (mobs.length) lines.push(`근처 몹: ${mobs.slice(0, 8).join(', ')}.`);
+
+    const inventory = getInventoryCounts(bot);
+    const tools = Object.keys(inventory).filter(name => /_(pickaxe|axe|shovel|hoe|sword)$/.test(name));
+    const seeds = Object.keys(inventory).filter(name => name.includes('seeds') || name === 'carrot' || name === 'potato');
+    if (tools.length) lines.push(`도구: ${tools.join(', ')}.`);
+    if (seeds.length) lines.push(`씨앗: ${seeds.join(', ')}.`);
+
+    return lines.join('\n');
+}

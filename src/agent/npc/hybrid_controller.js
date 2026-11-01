@@ -25,11 +25,16 @@ export class HybridController {
 
     cancel() {
         this.goal = null;
+        this.io.cancelRoutine?.();
         this.pendingEvent = '';
         this.suspendedUntil = this.now() + 10000;
     }
 
-    pauseForInput() { this.suspendedUntil = this.now() + 10000; }
+    pauseForInput() {
+        if (this.goal?.routine) this.goal = null;
+        this.io.cancelRoutine?.();
+        this.suspendedUntil = this.now() + 10000;
+    }
     ownsWork() { return this.enabled() && (this.busy || !!this.goal); }
 
     // Only bounded event-driven replanning, never a model request per work step.
@@ -47,16 +52,20 @@ export class HybridController {
         let goal;
         try {
             if (!this.goal && allowRoutine && !this.pendingEvent) {
+                if (await this.io.routine?.()) return;
+                if (this.now() < this.suspendedUntil || !this.io.canAct()) return;
                 const candidate = this.io.chooseGoal();
-                if (candidate && this.now() >= (this.avoidUntil.get(candidate.name) || 0))
+                if (candidate && this.now() >= (this.avoidUntil.get(candidate.name) || 0)) {
                     this.setGoal(candidate.name, candidate.quantity);
+                    this.goal.routine = true;
+                }
             }
             goal = this.goal;
             if (!goal) return;
             const before = this.io.inventory();
             if ((before[goal.name] || 0) >= goal.quantity) {
                 this.goal = null;
-                this.io.notify(`Item goal complete: ${goal.name} x${goal.quantity}.`, goal.owner, true);
+                this.io.notify(`Item goal complete: ${goal.name} x${goal.quantity}.`, goal.owner, true, goal);
                 return;
             }
             if (this.now() - goal.started >= 600000) {
@@ -69,7 +78,7 @@ export class HybridController {
             const after = this.io.inventory();
             if ((after[goal.name] || 0) >= goal.quantity) {
                 this.goal = null;
-                this.io.notify(`Item goal complete: ${goal.name} x${goal.quantity}.`, goal.owner, true);
+                this.io.notify(`Item goal complete: ${goal.name} x${goal.quantity}.`, goal.owner, true, goal);
                 return;
             }
             const progressed = Object.keys(after).some(name => (after[name] || 0) > (before[name] || 0));
@@ -87,6 +96,6 @@ export class HybridController {
         this.goal = null;
         this.avoidUntil.set(goal.name, this.now() + 120000);
         this.pendingEvent = `Item goal blocked: ${goal.name} x${goal.quantity}; ${reason}. Choose a different approach or ask the player. Do not immediately repeat the same goal.`;
-        this.io.notify(this.pendingEvent, goal.owner, false);
+        this.io.notify(this.pendingEvent, goal.owner, false, goal);
     }
 }

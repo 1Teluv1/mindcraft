@@ -2,6 +2,48 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 import { NPCData } from './npc/data.js';
 import settings from './settings.js';
 
+const CORE_FACT_LIMIT = 24;
+const CORE_FACT_LENGTH = 180;
+
+export function parseCoreFacts(text) {
+    if (!text || typeof text !== 'string') return [];
+    const trimmed = text.trim();
+    if (!trimmed || trimmed.includes('My brain disconnected') || trimmed.includes('생각이 끊겼어')) return [];
+
+    const jsonStart = trimmed.indexOf('[');
+    const jsonEnd = trimmed.lastIndexOf(']');
+    if (jsonStart !== -1 && jsonEnd > jsonStart) {
+        try {
+            const parsed = JSON.parse(trimmed.slice(jsonStart, jsonEnd + 1));
+            if (Array.isArray(parsed)) {
+                return cleanFacts(parsed.map(item => String(item)));
+            }
+        } catch {
+            // Fall through to line parsing when the model wraps the list in prose.
+        }
+    }
+
+    return cleanFacts(trimmed.split('\n').map(line => line.replace(/^\s*(?:[-*]|\d+[.)])\s+/, '')));
+}
+
+export function renderCoreFacts(facts) {
+    return facts.map(fact => `- ${fact}`).join('\n');
+}
+
+function cleanFacts(facts) {
+    const seen = new Set();
+    const cleaned = [];
+    for (let fact of facts) {
+        fact = fact.replace(/\s+/g, ' ').trim();
+        if (!fact || fact.length > CORE_FACT_LENGTH) continue;
+        const key = fact.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        cleaned.push(fact);
+        if (cleaned.length >= CORE_FACT_LIMIT) break;
+    }
+    return cleaned;
+}
 
 export class History {
     constructor(agent) {
@@ -14,7 +56,8 @@ export class History {
 
         this.turns = [];
 
-        // Natural language memory as a summary of recent messages + previous memory
+        // Durable facts. Recent chat turns are deleted; these stay.
+        this.core = [];
         this.memory = '';
 
         // Maximum number of messages to keep in context before saving chunk to memory
@@ -31,15 +74,19 @@ export class History {
     }
 
     async summarizeMemories(turns) {
-        console.log("Storing memories...");
-        this.memory = await this.agent.prompter.promptMemSaving(turns);
-
-        if (this.memory.length > 500) {
-            this.memory = this.memory.slice(0, 500);
-            this.memory += '...(Memory truncated to 500 chars. Compress it more next time)';
+        console.log("Storing core facts...");
+        const previous = this.core.slice();
+        const response = await this.agent.prompter.promptMemSaving(turns);
+        const facts = parseCoreFacts(response);
+        if (facts.length === 0) {
+            this.core = previous;
+            this.memory = renderCoreFacts(this.core);
+            console.log('Core facts unchanged.');
+            return;
         }
-
-        console.log("Memory updated to: ", this.memory);
+        this.core = facts;
+        this.memory = renderCoreFacts(this.core);
+        console.log(`Core facts: ${this.core.length}`);
     }
 
     async appendFullHistory(to_store) {
@@ -74,8 +121,10 @@ export class History {
             while (this.turns.length > 0 && this.turns[0].role === 'assistant')
                 chunk.push(this.turns.shift()); // remove until turns starts with system/user message
 
-            await this.summarizeMemories(chunk);
-            await this.appendFullHistory(chunk);
+            this._summaryTail = (this._summaryTail || Promise.resolve())
+                .then(() => this.summarizeMemories(chunk))
+                .catch(err => console.error('Memory summary failed:', err));
+            this.appendFullHistory(chunk);
         }
     }
 
@@ -83,6 +132,7 @@ export class History {
         try {
             const data = {
                 memory: this.memory,
+                core: this.core,
                 turns: this.turns,
                 self_prompting_state: this.agent.self_prompter.state,
                 self_prompt: this.agent.self_prompter.isStopped() ? null : this.agent.self_prompter.prompt,
@@ -104,9 +154,14 @@ export class History {
                 return null;
             }
             const data = JSON.parse(readFileSync(this.memory_fp, 'utf8'));
-            this.memory = data.memory || '';
+            if (Array.isArray(data.core) && data.core.length > 0) {
+                this.core = cleanFacts(data.core.map(item => String(item)));
+            } else {
+                this.core = parseCoreFacts(data.memory || '');
+            }
+            this.memory = renderCoreFacts(this.core);
             this.turns = data.turns || [];
-            console.log('Loaded memory:', this.memory);
+            console.log('Loaded core facts:', this.core.length);
             return data;
         } catch (error) {
             console.error('Failed to load history:', error);
@@ -116,6 +171,7 @@ export class History {
 
     clear() {
         this.turns = [];
+        this.core = [];
         this.memory = '';
     }
 }

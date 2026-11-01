@@ -1,20 +1,120 @@
 import { exec, spawn } from 'child_process';
 import { promises as fs } from 'fs';
+import net from 'net';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { TTSConfig as gptTTSConfig } from '../models/gpt.js';
 import { TTSConfig as geminiTTSConfig } from '../models/gemini.js';
+import settings from './settings.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SUPERTONIC_SCRIPT = path.join(__dirname, '../tts/supertonic_server.py');
+
+let supertonicProcess = null;
+let supertonicStart = null;
 
 let speakingQueue = []; // each item: {text, model, audioData, ready}
 let isSpeaking = false;
+let currentPlayback = null;
+
+function isSupertonic(model) {
+    return typeof model === 'string' && model.startsWith('supertonic/');
+}
+
+function ttsPort() {
+    return Number(settings.tts_port) || 47821;
+}
+
+function pythonBin() {
+    return process.env.PYTHON || 'python';
+}
+
+function portOpen(port) {
+    return new Promise((resolve) => {
+        const socket = net.connect({ host: '127.0.0.1', port });
+        const done = (open) => {
+            socket.removeAllListeners();
+            socket.destroy();
+            resolve(open);
+        };
+        socket.once('connect', () => done(true));
+        socket.once('error', () => done(false));
+    });
+}
+
+async function ensureSupertonic() {
+    if (await portOpen(ttsPort())) return;
+    if (!supertonicStart) {
+        supertonicStart = (async () => {
+            supertonicProcess = spawn(pythonBin(), [SUPERTONIC_SCRIPT, String(ttsPort())], {
+                stdio: ['ignore', 'inherit', 'inherit'],
+                windowsHide: true,
+            });
+            supertonicProcess.on('exit', () => {
+                supertonicProcess = null;
+                supertonicStart = null;
+            });
+            for (let i = 0; i < 60; i++) {
+                if (await portOpen(ttsPort())) return;
+                await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+            throw new Error('Supertonic TTS server did not start');
+        })().catch((err) => {
+            supertonicStart = null;
+            throw err;
+        });
+    }
+    await supertonicStart;
+}
+
+async function synthesizeSupertonic(text, voice, lang) {
+    await ensureSupertonic();
+    const response = await fetch(`http://127.0.0.1:${ttsPort()}/speak`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice, lang }),
+        signal: AbortSignal.timeout(300000),
+    });
+    if (!response.ok) {
+        throw new Error(await response.text());
+    }
+    const wavPath = path.join(os.tmpdir(), `tts_${Date.now()}_${process.pid}.wav`);
+    await fs.writeFile(wavPath, Buffer.from(await response.arrayBuffer()));
+    return wavPath;
+}
+
+function playWav(wavPath) {
+    const isWin = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+    const quoted = wavPath.replace(/'/g, "''");
+    const cmd = isWin
+        ? `powershell.exe -NoProfile -Command "Add-Type -AssemblyName System; $p = New-Object System.Media.SoundPlayer '${quoted}'; $p.PlaySync(); $p.Dispose()"`
+        : isMac
+        ? `afplay ${JSON.stringify(wavPath)}`
+        : `aplay ${JSON.stringify(wavPath)}`;
+    return new Promise((resolve) => {
+        currentPlayback = exec(cmd, async (err) => {
+            currentPlayback = null;
+            if (err && err.killed !== true && err.signal !== 'SIGTERM') console.error('[TTS] play error', err);
+            try { await fs.unlink(wavPath); } catch {}
+            resolve();
+        });
+    });
+}
+
+export function stopSpeaking() {
+    speakingQueue = [];
+    if (currentPlayback && !currentPlayback.killed) currentPlayback.kill();
+}
 
 export function speak(text, speak_model) {
+    if (!settings.speak) return;
     const model = speak_model || 'system';
 
     const item = { text, model, audioData: null, ready: null };
 
-    if (model === 'system') {
-        // no preprocessing needed
+    if (model === 'system' || isSupertonic(model)) {
         item.ready = Promise.resolve();
     } else {
     item.ready = fetchRemoteAudio(text, model)
@@ -62,7 +162,7 @@ async function processQueue() {
     }
     const item = speakingQueue.shift();
     const { text: txt, model, audioData } = item;
-    if (txt.trim() === '') {
+    if (txt.trim() === '' || !settings.speak) {
         isSpeaking = false;
         processQueue();
         return;
@@ -77,6 +177,23 @@ async function processQueue() {
         if (item.error) throw item.error;
     } catch (err) {
         console.error('[TTS] preprocess error', err);
+        isSpeaking = false;
+        processQueue();
+        return;
+    }
+
+    if (isSupertonic(model)) {
+        const [, lang, voice] = model.split('/');
+        try {
+            const wavPath = await synthesizeSupertonic(txt, voice || 'M1', lang || 'ko');
+            if (!settings.speak) {
+                try { await fs.unlink(wavPath); } catch {}
+            } else {
+                await playWav(wavPath);
+            }
+        } catch (err) {
+            console.error('[TTS] supertonic error', err);
+        }
         isSpeaking = false;
         processQueue();
         return;

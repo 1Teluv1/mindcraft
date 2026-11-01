@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mindcraft System Architecture 🌸</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Nunito:ital,wght@0,400;0,600;0,800;1,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-0: #fff6fb;
+            --border: rgba(235, 148, 185, 0.35);
+            --text-1: #6b4257;
+            --text-2: #a97d95;
+            --accent: #ff8fb8;
+            --accent-strong: #f76fa4;
+            --success: #4fc391;
+            --warning: #ffb45e;
+            --panel: rgba(255, 233, 245, 0.85);
+            --input-bg: #fffafd;
+            --radius-lg: 22px;
+            --radius-md: 14px;
+            --shadow-soft: 0 14px 30px rgba(247, 111, 164, 0.18);
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Nunito', 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 32px 24px 64px;
+            color: var(--text-1);
+            background:
+                radial-gradient(circle at top left, rgba(255, 176, 208, 0.35), transparent 32%),
+                radial-gradient(circle at bottom right, rgba(190, 240, 214, 0.35), transparent 36%),
+                linear-gradient(180deg, var(--bg-0) 0%, #ffeaf5 100%);
+            min-height: 100vh;
+        }
+        h1 {
+            font-family: 'Baloo 2', system-ui, sans-serif;
+            color: var(--accent-strong);
+            letter-spacing: -0.03em;
+            margin: 0 0 4px;
+        }
+        .subtitle { color: var(--text-2); margin: 0 0 28px; font-style: italic; }
+        h2 {
+            font-family: 'Baloo 2', system-ui, sans-serif;
+            color: var(--accent-strong);
+            font-size: 1.3rem;
+            margin: 40px 0 14px;
+        }
+        .card {
+            background: linear-gradient(180deg, rgba(255, 240, 249, 0.96), rgba(255, 227, 243, 0.96));
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+            padding: 20px;
+        }
+
+        /* ---- Diagram ---- */
+        .diagram { display: flex; flex-direction: column; gap: 0; align-items: center; }
+        .layer { width: min(860px, 100%); }
+        .layer-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--text-2);
+            margin-bottom: 8px;
+            padding-left: 6px;
+        }
+        .row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+        .box {
+            background: var(--input-bg);
+            border: 2px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 12px 16px;
+            min-width: 150px;
+            flex: 1 1 auto;
+            max-width: 300px;
+        }
+        .box h3 { margin: 0 0 4px; font-size: 0.95rem; color: var(--accent-strong); }
+        .box p { margin: 0; font-size: 0.82rem; color: var(--text-2); line-height: 1.35; }
+        .box code, td code {
+            background: rgba(255, 143, 184, 0.14);
+            border-radius: 6px;
+            padding: 1px 5px;
+            font-size: 0.78em;
+        }
+        .box.pink { border-color: var(--accent); background: #fff0f8; }
+        .box.mint { border-color: rgba(79, 195, 145, 0.6); background: #f2fdf7; }
+        .box.peach { border-color: rgba(255, 167, 147, 0.8); background: #fff6f2; }
+        .arrow {
+            align-self: center;
+            color: var(--accent-strong);
+            font-size: 1.3rem;
+            line-height: 1;
+            padding: 6px 0;
+            text-align: center;
+        }
+        .arrow small { display: block; font-size: 0.72rem; color: var(--text-2); }
+
+        /* ---- Tables ---- */
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+        th { color: var(--accent-strong); font-family: 'Baloo 2', system-ui, sans-serif; }
+        tr:last-child td { border-bottom: none; }
+
+        .flow-list { padding-left: 0; list-style: none; counter-reset: step; margin: 0; }
+        .flow-list li {
+            counter-increment: step;
+            position: relative;
+            padding: 10px 12px 10px 48px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            margin-bottom: 8px;
+        }
+        .flow-list li::before {
+            content: counter(step);
+            position: absolute;
+            left: 12px; top: 50%;
+            transform: translateY(-50%);
+            width: 26px; height: 26px;
+            border-radius: 999px;
+            background: var(--accent-strong);
+            color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800;
+            font-size: 0.85rem;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: var(--accent-strong);
+            text-decoration: none;
+            font-weight: 700;
+        }
+        .back-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <a class="back-link" href="/index.html">← Back to dashboard</a>
+    <h1>🌸 Mindcraft System Architecture</h1>
+    <p class="subtitle">How the pieces fit together — from your browser down into Minecraft.</p>
+
+    <div class="card diagram">
+        <!-- Browser -->
+        <div class="layer">
+            <div class="layer-label">Browser (you)</div>
+            <div class="row">
+                <div class="box pink">
+                    <h3>🖥️ Web UI</h3>
+                    <p><code>public/index.html</code> — create agents, chat, watch inventory &amp; bot view. Talks over Socket.IO.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="arrow">⬇<small>Socket.IO + REST (port 8080)</small></div>
+
+        <!-- Main process -->
+        <div class="layer">
+            <div class="layer-label">Main Node.js process — <code>main.js</code></div>
+            <div class="row">
+                <div class="box pink">
+                    <h3>🧠 MindServer</h3>
+                    <p><code>mindserver.js</code> — Express + Socket.IO hub. Routes messages between UI and agent processes, persists settings to <code>bots/&lt;name&gt;/ui-settings.json</code>.</p>
+                </div>
+                <div class="box pink">
+                    <h3>🎮 Agent Manager</h3>
+                    <p><code>mindcraft.js</code> — spawns one child process per agent, assigns viewer ports 3000+, restarts crashed agents.</p>
+                </div>
+                <div class="box pink">
+                    <h3>📡 Server Probe</h3>
+                    <p><code>mcserver.js</code> — detects Minecraft server host/port/version before connecting.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="arrow">⬇<small>child_process.spawn (one per agent)</small></div>
+
+        <!-- Agent process -->
+        <div class="layer">
+            <div class="layer-label">Agent child process — <code>init_agent.js</code> → <code>agent.js</code></div>
+            <div class="row">
+                <div class="box mint">
+                    <h3>💬 Conversation</h3>
+                    <p><code>conversation.js</code> + <code>models/</code> — LLM loop (OpenAI, Gemini, Claude, CLI providers…). Sends chat &amp; tool calls.</p>
+                </div>
+                <div class="box mint">
+                    <h3>⚙️ Actions</h3>
+                    <p><code>action_manager.js</code>, <code>commands/</code> — executes LLM requests: move, craft, build, fight.</p>
+                </div>
+                <div class="box mint">
+                    <h3>🧩 NPC / Hybrid</h3>
+                    <p><code>npc/hybrid_controller.js</code>, settlement &amp; item-goal runtimes — local autonomy without waiting on the LLM.</p>
+                </div>
+                <div class="box mint">
+                    <h3>🗂️ Memory</h3>
+                    <p><code>memory_bank.js</code>, <code>history.js</code>, <code>self_prompter.js</code> — long-term memory &amp; prompts.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="arrow">⬇<small>Mineflayer (Minecraft protocol)</small></div>
+
+        <!-- Game -->
+        <div class="layer">
+            <div class="layer-label">Game &amp; side services</div>
+            <div class="row">
+                <div class="box peach">
+                    <h3>⛏️ Minecraft Server</h3>
+                    <p>Java Edition world (LAN or online). The bot joins as a normal player.</p>
+                </div>
+                <div class="box peach">
+                    <h3>📷 Bot View</h3>
+                    <p>Head-mounted camera served on ports <code>3000+</code>, embedded in the UI when <code>render_bot_view</code> is on.</p>
+                </div>
+                <div class="box peach">
+                    <h3>🔊 TTS</h3>
+                    <p><code>speak.js</code> → GPT/Gemini voices or local Python server (<code>tts/supertonic_server.py</code>) when <code>speak</code> is enabled.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2>Message flow (one chat message)</h2>
+    <ol class="flow-list">
+        <li>You type in the UI → Socket.IO <code>send-message</code> to MindServer.</li>
+        <li>MindServer forwards it to that agent's child process socket.</li>
+        <li><code>conversation.js</code> feeds it to the LLM with memory &amp; context.</li>
+        <li>The LLM replies in chat and/or requests actions via <code>action_manager.js</code>.</li>
+        <li>Mineflayer executes them in-game; state updates stream back to the UI every second (<code>state-update</code>).</li>
+    </ol>
+
+    <h2>Ports &amp; files cheat sheet</h2>
+    <div class="card">
+        <table>
+            <tr><th>Port</th><th>What</th></tr>
+            <tr><td><code>8080</code></td><td>MindServer — web UI + Socket.IO API</td></tr>
+            <tr><td><code>3000+</code></td><td>Bot camera view (one per agent, in creation order)</td></tr>
+            <tr><td><code>25565 / LAN</code></td><td>Minecraft server the bots join</td></tr>
+        </table>
+    </div>
+
+    <h2>Where things live</h2>
+    <div class="card">
+        <table>
+            <tr><th>Path</th><th>Purpose</th></tr>
+            <tr><td><code>main.js</code>, <code>settings.js</code></td><td>Entry point &amp; global config (profiles, auto_open_ui…)</td></tr>
+            <tr><td><code>keys.json</code></td><td>API keys for model providers</td></tr>
+            <tr><td><code>players/*.json</code>, <code>profiles/</code></td><td>Bot profiles — name, model, prompts</td></tr>
+            <tr><td><code>bots/&lt;name&gt;/ui-settings.json</code></td><td>Per-agent UI settings saved from the dashboard</td></tr>
+            <tr><td><code>src/mindcraft/</code></td><td>MindServer, agent manager, web UI (<code>public/</code>)</td></tr>
+            <tr><td><code>src/process/</code></td><td>Child-process lifecycle (spawn / restart)</td></tr>
+            <tr><td><code>src/agent/</code></td><td>The bot brain: conversation, actions, memory, NPC autonomy</td></tr>
+            <tr><td><code>src/models/</code></td><td>LLM provider adapters (OpenAI, Gemini, Claude, CLI…)</td></tr>
+            <tr><td><code>src/tts/</code></td><td>Local Python TTS server (optional voice output)</td></tr>
+        </table>
+    </div>
+
+    <h2>Docker layout</h2>
+    <div class="card">
+        <table>
+            <tr><th>Service</th><th>Purpose</th></tr>
+            <tr><td><code>mindcraft</code></td><td>Main app — exposes 8080 (UI) and 3000–3003 (bot views); mounts settings, keys, profiles &amp; bots dirs</td></tr>
+            <tr><td><code>viaproxy</code></td><td>Optional ViaVersion proxy for Minecraft versions Mineflayer doesn't support natively</td></tr>
+        </table>
+    </div>
+
+    <p class="subtitle" style="margin-top:32px;">Generated from the codebase — if a file moves, update this page too. 💗</p>
+</body>
+</html>

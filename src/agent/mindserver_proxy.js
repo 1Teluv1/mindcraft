@@ -1,6 +1,7 @@
 import { io } from 'socket.io-client';
 import convoManager from './conversation.js';
 import { setSettings } from './settings.js';
+import { stopSpeaking } from './speak.js';
 import { getFullState } from './library/full_state.js';
 
 // agent's individual connection to the mindserver
@@ -54,6 +55,12 @@ class MindServerProxy {
                 console.log(this.agent.name, 'updating available agents');
                 this.agent.task.updateAvailableAgents(agents);
             }
+        });
+
+        this.socket.on('update-settings', (next) => {
+            if (!next || typeof next !== 'object') return;
+            setSettings(next);
+            if (!next.speak) stopSpeaking();
         });
 
         this.socket.on('restart-agent', (agentName) => {

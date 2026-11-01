@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { History } from './history.js';
 import { Coder } from './coder.js';
 import { VisionInterpreter } from './vision/vision_interpreter.js';
@@ -18,6 +19,38 @@ import settings from './settings.js';
 import { Task } from './tasks/tasks.js';
 import { speak } from './speak.js';
 import { log, validateNameFormat, handleDisconnection } from './connection_handler.js';
+import { bindSummarizer, note, scheduleCompress } from './shared_context.js';
+
+const NAME_ALIASES = {
+    chatgpt: ['chatgpt', '챗지피티', '챗gpt', '지피티', 'gpt'],
+    claude: ['claude', '클로드'],
+    cursor: ['cursor', '커서'],
+};
+
+let cachedBotNames = null;
+
+function knownBotNames() {
+    if (cachedBotNames) return cachedBotNames;
+    const names = [];
+    for (const profilePath of settings.profiles || []) {
+        try {
+            const profile = JSON.parse(readFileSync(profilePath, 'utf8'));
+            if (profile.name) names.push(profile.name);
+        } catch {
+            // A missing profile should not block chat.
+        }
+    }
+    cachedBotNames = names;
+    return names;
+}
+
+function mentionedBotNames(text) {
+    const lower = String(text || '').toLowerCase();
+    return knownBotNames().filter(name => {
+        const keys = NAME_ALIASES[name.toLowerCase()] || [name.toLowerCase()];
+        return keys.some(key => lower.includes(key));
+    });
+}
 
 export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
@@ -29,6 +62,7 @@ export class Agent {
         this.actions = new ActionManager(this);
         this.prompter = new Prompter(this, settings.profile);
         this.name = (this.prompter.getName() || '').trim();
+        bindSummarizer((turns, memory) => this.prompter.promptMemSaving(turns, memory));
         console.log(`Initializing agent ${this.name}...`);
         
         // Validate Name Format
@@ -163,17 +197,24 @@ export class Agent {
             try {
                 if (ignore_messages.some((m) => message.startsWith(m))) return;
 
+                if (convoManager.isOtherAgent(username)) {
+                    console.warn('received whisper from other bot??')
+                    return;
+                }
+
+                note(username, message);
+                const translation = await handleEnglishTranslation(message);
+                const mentioned = mentionedBotNames(`${message}\n${translation}`);
+                const addressedToMe = mentioned.some(name => name.toLowerCase() === this.name.toLowerCase());
+                if (mentioned.length > 0 && !addressedToMe) {
+                    scheduleCompress();
+                    return;
+                }
+
                 this.shut_up = false;
 
                 console.log(this.name, 'received message from', username, ':', message);
-
-                if (convoManager.isOtherAgent(username)) {
-                    console.warn('received whisper from other bot??')
-                }
-                else {
-                    let translation = await handleEnglishTranslation(message);
-                    this.handleMessage(username, translation);
-                }
+                this.handleMessage(username, translation);
             } catch (error) {
                 console.error('Error handling message:', error);
             }
@@ -184,8 +225,7 @@ export class Agent {
         this.bot.on('whisper', respondFunc);
         
         this.bot.on('chat', (username, message) => {
-            if (serverProxy.getNumOtherAgents() > 0) return;
-            // only respond to open chat messages when there are no other agents
+            if (convoManager.isOtherAgent(username)) return;
             respondFunc(username, message);
         });
 
@@ -196,28 +236,45 @@ export class Agent {
             bannedFood: ["rotten_flesh", "spider_eye", "poisonous_potato", "pufferfish", "chicken"]
         };
 
-        if (save_data?.self_prompt) {
+        this.deferCombat = true;
+        try {
             if (init_message) {
-                this.history.add('system', init_message);
+                await this.handleMessage('system', init_message, 1);
+            } else {
+                this.openChat(`${this.name}야, 안녕. 같이 뭐 할까?`);
             }
+        } finally {
+            if (this.deferCombat)
+                this.openChat(`${this.name}야, 안녕. 같이 뭐 할까?`);
+            this.deferCombat = false;
+        }
+        if (save_data?.self_prompt) {
             await this.self_prompter.handleLoad(save_data.self_prompt, save_data.self_prompting_state);
         }
         if (save_data?.last_sender) {
             this.last_sender = save_data.last_sender;
             if (convoManager.otherAgentInGame(this.last_sender)) {
                 const msg_package = {
-                    message: `You have restarted and this message is auto-generated. Continue the conversation with me.`,
+                    message: `다시 시작됐다. 이 메시지는 자동으로 만들어졌다. 나와 대화를 이어가라.`,
                     start: true
                 };
                 convoManager.receiveFromBot(this.last_sender, msg_package);
             }
         }
-        else if (init_message) {
-            await this.handleMessage('system', init_message, 2);
+        this._startLifeGoal();
+    }
+
+    _startLifeGoal() {
+        if (!settings.life_goal || settings.task) return;
+        // Migrate saved default routines once; keep custom goals and newly paused routines.
+        const oldRoutine = this.self_prompter.prompt !== settings.life_goal &&
+            /^(Stay near the player and keep working\.|플레이어 곁에서 계속 일한다\.)/.test(this.self_prompter.prompt || '');
+        if (settings.settlement_simulation && oldRoutine) {
+            this.self_prompter.start(settings.life_goal);
+            return;
         }
-        else {
-            this.openChat("Hello world! I am "+this.name);
-        }
+        if (!this.self_prompter.isStopped()) return;
+        this.self_prompter.start(settings.life_goal);
     }
 
     checkAllPlayersPresent() {
@@ -253,7 +310,29 @@ export class Agent {
         convoManager.endAllConversations();
     }
 
-    async handleMessage(source, message, max_responses=null) {
+    noteOwnDeath(cause) {
+        if (cause) this._lastDeathCause = cause;
+        const pos = this.bot.entity?.position;
+        if (pos && !this._deathPosSaved) {
+            this.memory_bank.rememberPlace('last_death_position', pos.x, pos.y, pos.z);
+            this._deathPosSaved = true;
+        }
+        if (this._deathReactTimer) return;
+        this.actions.cancelResume();
+        this.actions.stop();
+        this._deathReactTimer = setTimeout(() => {
+            this._deathReactTimer = null;
+            this._deathPosSaved = false;
+            const why = String(this._lastDeathCause || '').replace(/\s+/g, ' ').trim();
+            this._lastDeathCause = '';
+            const detail = why ? ` 게임이 알린 원인: "${why}".` : '';
+            this._speakPublic = true;
+            this.handleMessage('system', `방금 죽었다.${detail} 아이템은 죽은 자리 바닥에 떨어졌고 소지품에 없다. 근처 모두에게 친구처럼 짧은 한국어 한 문장만 말한다. 무엇이 죽였는지 일상적인 말로 말한다. 리스폰했다고 하지 말고, 소지품을 확인하겠다고 하지 말고, 친구 한 명에게만 말하지 않는다. 그 다음 명령은 !goToRememberedPlace("last_death_position") 하나만 쓴다.`, 1, true)
+                .finally(() => { this._speakPublic = false; });
+        }, 500);
+    }
+
+    async handleMessage(source, message, max_responses=null, priority=false) {
         await this.checkTaskDone();
         if (!source || !message) {
             console.warn('Received empty message from', source);
@@ -261,11 +340,13 @@ export class Agent {
         }
 
         let used_command = false;
-        if (max_responses === null) {
-            max_responses = settings.max_commands === -1 ? Infinity : settings.max_commands;
+        const chainCap = Math.max(1, Number(settings.action_chain_limit) || 6);
+        const configured = settings.max_commands === -1 ? chainCap : Number(settings.max_commands);
+        if (max_responses === null || max_responses === -1 || !Number.isFinite(max_responses)) {
+            max_responses = configured;
         }
-        if (max_responses === -1) {
-            max_responses = Infinity;
+        if (max_responses > chainCap) {
+            max_responses = chainCap;
         }
 
         const self_prompt = source === 'system' || source === this.name;
@@ -278,9 +359,11 @@ export class Agent {
             if (user_command_name) {
                 if (!commandExists(user_command_name)) {
                     this.routeResponse(source, `Command '${user_command_name}' does not exist.`);
+                    scheduleCompress();
                     return false;
                 }
-                this.routeResponse(source, `*${source} used ${user_command_name.substring(1)}*`);
+                if (settings.show_command_syntax !== "none")
+                    this.routeResponse(source, `*${source} used ${user_command_name.substring(1)}*`);
                 if (user_command_name === '!newAction') {
                     // all user-initiated commands are ignored by the bot except for this one
                     // add the preceding message to the history to give context for newAction
@@ -289,6 +372,7 @@ export class Agent {
                 let execute_res = await executeCommand(this, message);
                 if (execute_res) 
                     this.routeResponse(source, execute_res);
+                scheduleCompress();
                 return true;
             }
         }
@@ -300,7 +384,7 @@ export class Agent {
         message = await handleEnglishTranslation(message);
         console.log('received message from', source, ':', message);
 
-        const checkInterrupt = () => this.self_prompter.shouldInterrupt(self_prompt) || this.shut_up || convoManager.responseScheduledFor(source);
+        const checkInterrupt = () => !priority && (this.self_prompter.shouldInterrupt(self_prompt) || this.shut_up || convoManager.responseScheduledFor(source));
         
         let behavior_log = this.bot.modes.flushBehaviorLog().trim();
         if (behavior_log.length > 0) {
@@ -316,18 +400,22 @@ export class Agent {
         await this.history.add(source, message);
         this.history.save();
 
-        if (!self_prompt && this.self_prompter.isActive()) // message is from user during self-prompting
-            max_responses = 1; // force only respond to this message, then let self-prompting take over
         for (let i=0; i<max_responses; i++) {
             if (checkInterrupt()) break;
             let history = this.history.getHistory();
-            let res = await this.prompter.promptConvo(history);
+            const fromPlayer = !self_prompt && !from_other_bot;
+            let res = await this.prompter.promptConvo(history, priority || fromPlayer);
 
             console.log(`${this.name} full response to ${source}: ""${res}""`);
 
             if (res.trim().length === 0) {
                 console.warn('no response')
                 break; // empty response ends loop
+            }
+
+            if (this._speakPublic) {
+                const spoken = res.replace(/![A-Za-z]+\([^)]*\)|![A-Za-z]+/g, '').replace(/\s+/g, ' ').trim();
+                res = `${spoken} !goToRememberedPlace("last_death_position")`.trim();
             }
 
             let command_name = containsCommand(res);
@@ -343,6 +431,10 @@ export class Agent {
                 }
 
                 if (checkInterrupt()) break;
+                if (command_name === '!setRole' && !fromPlayer) {
+                    this.history.add('system', 'Only the human player can assign roles. Continue your current role.');
+                    break;
+                }
                 this.self_prompter.handleUserPromptedCmd(self_prompt, isAction(command_name));
 
                 if (settings.show_command_syntax === "full") {
@@ -360,7 +452,7 @@ export class Agent {
                     // no command at all
                     let pre_message = res.substring(0, res.indexOf(command_name)).trim();
                     if (pre_message.trim().length > 0)
-                        this.routeResponse(source, pre_message);
+                        await this.routeResponse(source, pre_message);
                 }
 
                 let execute_res = await executeCommand(this, res);
@@ -368,28 +460,35 @@ export class Agent {
                 console.log('Agent executed:', command_name, 'and got:', execute_res);
                 used_command = true;
 
-                if (command_name === '!obtainItem' && this.hybrid.ownsWork()) break;
-                if (execute_res)
-                    this.history.add('system', execute_res);
-                else
+                if (execute_res == null || (command_name === '!obtainItem' && this.hybrid.ownsWork()))
                     break;
+                if (String(execute_res).trim().length === 0)
+                    execute_res = 'Action finished. Choose the next command, or reply without a command if this request is done.';
+                this.history.add('system', execute_res);
+                // A successful equipment change completes this response. Re-prompting here
+                // produces a second acknowledgement and can immediately switch tools to mine.
+                if (command_name === '!equip' && /(?:^|\n)Equipped [a-z0-9_]+\./.test(String(execute_res))) {
+                    this.history.save();
+                    break;
+                }
             }
             else { // conversation response
                 this.history.add(this.name, res);
-                this.routeResponse(source, res);
+                await this.routeResponse(source, res);
                 break;
             }
             
             this.history.save();
         }
 
+        scheduleCompress();
         return used_command;
     }
 
     async routeResponse(to_player, message) {
         if (this.shut_up) return;
         let self_prompt = to_player === 'system' || to_player === this.name;
-        if (self_prompt && this.last_sender) {
+        if (self_prompt && this.last_sender && !this._speakPublic) {
             // this is for when the agent is prompted by system while still in conversation
             // so it can respond to events like death but be routed back to the last sender
             to_player = this.last_sender;
@@ -397,16 +496,16 @@ export class Agent {
 
         if (convoManager.isOtherAgent(to_player) && convoManager.inConversation(to_player)) {
             // if we're in an ongoing conversation with the other bot, send the response to it
-            convoManager.sendToBot(to_player, message);
+            await convoManager.sendToBot(to_player, message);
         }
         else {
             // otherwise, use open chat
-            this.openChat(message);
+            await this.openChat(message);
             // note that to_player could be another bot, but if we get here the conversation has ended
         }
     }
 
-    async openChat(message) {
+    async openChat(message, record = true) {
         let to_translate = message;
         let remaining = '';
         let command_name = containsCommand(message);
@@ -415,7 +514,10 @@ export class Agent {
             to_translate = to_translate.substring(0, translate_up_to);
             remaining = message.substring(translate_up_to);
         }
-        message = (await handleTranslation(to_translate)).trim() + " " + remaining;
+        const spoken = (await handleTranslation(to_translate)).trim();
+        if (record)
+            note(this.name, spoken || message);
+        message = remaining ? `${spoken} ${remaining}`.trim() : spoken;
         // newlines are interpreted as separate chats, which triggers spam filters. replace them with spaces
         message = message.replaceAll('\n', ' ');
 
@@ -423,12 +525,16 @@ export class Agent {
             for (let username of settings.only_chat_with) {
                 this.bot.whisper(username, message);
             }
+            if (record && spoken)
+                this.deferCombat = false;
         }
         else {
-            if (settings.speak) {
-                speak(to_translate, this.prompter.profile.speak_model);
+            if (settings.speak && spoken) {
+                speak(spoken, this.prompter.profile.speak_model);
             }
             if (settings.chat_ingame) {this.bot.chat(message);}
+            if (record && spoken)
+                this.deferCombat = false;
             sendOutputToServer(this.name, message);
         }
     }
@@ -468,8 +574,11 @@ export class Agent {
             }
         });
         this.bot.on('death', () => {
-            this.actions.cancelResume();
-            this.actions.stop();
+            try {
+                this.noteOwnDeath('');
+            } catch (err) {
+                console.error('Death reaction failed', err);
+            }
         });
         this.bot.on('kicked', (reason) => {
             if (!this._disconnectHandled) {
@@ -477,17 +586,13 @@ export class Agent {
                 this.cleanKill(msg);
             }
         });
-        this.bot.on('messagestr', async (message, _, jsonMsg) => {
-            if (jsonMsg.translate && jsonMsg.translate.startsWith('death') && message.startsWith(this.name)) {
-                console.log('Agent died: ', message);
-                let death_pos = this.bot.entity.position;
-                this.memory_bank.rememberPlace('last_death_position', death_pos.x, death_pos.y, death_pos.z);
-                let death_pos_text = null;
-                if (death_pos) {
-                    death_pos_text = `x: ${death_pos.x.toFixed(2)}, y: ${death_pos.y.toFixed(2)}, z: ${death_pos.z.toFixed(2)}`;
-                }
-                let dimention = this.bot.game.dimension;
-                this.handleMessage('system', `You died at position ${death_pos_text || "unknown"} in the ${dimention} dimension with the final message: '${message}'. Your place of death is saved as 'last_death_position' if you want to return. Previous actions were stopped and you have respawned.`);
+        this.bot.on('messagestr', (message, _, jsonMsg) => {
+            if (!jsonMsg?.translate?.startsWith('death') || !message.includes(this.name)) return;
+            console.log('Agent died: ', message);
+            try {
+                this.noteOwnDeath(message);
+            } catch (err) {
+                console.error('Death reaction failed', err);
             }
         });
         this.bot.on('idle', () => {
@@ -523,6 +628,10 @@ export class Agent {
     }
 
     async update(delta) {
+        const routine = this.self_prompter.isActive() && this.self_prompter.prompt === settings.life_goal && !settings.task;
+        try {
+            this.settlement?.refresh(routine && !this.hybrid.goal?.owner && Date.now() >= this.hybrid.suspendedUntil);
+        } catch (error) { console.error('Settlement observations unavailable:', error.message); }
         await this.bot.modes.update();
         this.self_prompter.update(delta);
         // Do not block emergency modes while a goal step is running.

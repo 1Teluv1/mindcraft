@@ -9,6 +9,7 @@ import { containsCommand, commandExists, executeCommand, truncCommandMessage, is
 import { ActionManager } from './action_manager.js';
 import { NPCContoller } from './npc/controller.js';
 import { createHybridController } from './npc/hybrid_runtime.js';
+import { PlayerTether } from './npc/player_tether.js';
 import { MemoryBank } from './memory_bank.js';
 import { SelfPrompter } from './self_prompter.js';
 import convoManager from './conversation.js';
@@ -628,6 +629,8 @@ export class Agent {
     }
 
     async update(delta) {
+        this.playerTether ??= new PlayerTether();
+        this.playerTether.update(this, settings, name => convoManager.isOtherAgent(name) || knownBotNames().includes(name));
         const routine = this.self_prompter.isActive() && this.self_prompter.prompt === settings.life_goal && !settings.task;
         try {
             this.settlement?.refresh(routine && !this.hybrid.goal?.owner && Date.now() >= this.hybrid.suspendedUntil);

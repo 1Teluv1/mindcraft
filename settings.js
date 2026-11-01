@@ -23,6 +23,8 @@ const settings = {
     "self_prompt_cooldown_ms": 15000,
     "autonomy_decision_ms": 30000, // 비축 작업 외의 다음 자율 행동을 판단하는 최소 간격
     "hybrid_autonomy": true, // routine resource work and item goals use the local planner
+    "player_teleport_distance": 48, // 플레이어와 이 거리보다 멀어지면 /tp. 0이면 끔. 서버 명령 권한 필요
+    "player_teleport_cooldown_ms": 15000, // 명령 실패 시에도 텔레포트 요청 간격 유지
     "settlement_simulation": true, // 사용자 지시가 없으면 공동 거점에서 역할에 따라 생활
     "settlement_world_id": "local-survival", // 같은 서버/포트의 다른 월드로 바꾸면 이 값도 변경
     "settlement_roles": {}, // 모두 같은 자유 생활 캐릭터. 역할은 사용자가 !setRole로 지정

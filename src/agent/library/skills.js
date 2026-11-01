@@ -1075,20 +1075,15 @@ export async function goToGoal(bot, goal) {
     nonDestructiveMovements.placeCost = 2;
     nonDestructiveMovements.digCost = 10;
 
-    const destructiveMovements = new pf.Movements(bot);
-
-    let final_movements = destructiveMovements;
+    nonDestructiveMovements.canDig = false;
+    const final_movements = nonDestructiveMovements;
 
     const pathfind_timeout = 1000;
     if (await bot.pathfinder.getPathTo(nonDestructiveMovements, goal, pathfind_timeout).status === 'success') {
-        final_movements = nonDestructiveMovements;
         log(bot, `Found non-destructive path.`);
     }
-    else if (await bot.pathfinder.getPathTo(destructiveMovements, goal, pathfind_timeout).status === 'success') {
-        log(bot, `Found destructive path.`);
-    }
     else {
-        log(bot, `Path not found, but attempting to navigate anyway using destructive movements.`);
+        log(bot, `No complete route found yet; continuing without breaking blocks.`);
     }
 
     const doorCheckInterval = startDoorInterval(bot);
